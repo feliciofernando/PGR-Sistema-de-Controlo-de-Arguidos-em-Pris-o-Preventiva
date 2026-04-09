@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -917,23 +919,194 @@ function AppContent() {
   const handleDownloadPdf = async (arguido: Arguido) => {
     try {
       toast({ title: "A gerar PDF...", description: `Ficha de ${arguido.nomeArguido}` });
-      const res = await fetch(`/api/arguidos/${arguido.id}/ficha`);
-      if (!res.ok) {
-        throw new Error('Falha ao gerar PDF');
+
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+
+      // === HEADER ===
+      doc.setFillColor(194, 65, 12); // #c2410c
+      doc.rect(0, 0, pageWidth, 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("PGR ANGOLA", pageWidth / 2, 12, { align: "center" });
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text("Procuradoria-Geral da República — Ficha de Arguido em Prisão Preventiva", pageWidth / 2, 20, { align: "center" });
+
+      // === Identificação ===
+      let y = 36;
+      doc.setTextColor(28, 25, 23); // #1c1917
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(`ID: ${arguido.numeroId}  |  Processo Nº: ${arguido.numeroProcesso}`, margin, y);
+      y += 7;
+      doc.setFontSize(14);
+      doc.text(arguido.nomeArguido, margin, y);
+
+      // Status badge
+      const statusColors: Record<string, [number, number, number]> = {
+        ativo: [28, 61, 90],
+        vencido: [161, 0, 0],
+        encerrado: [156, 163, 175],
+      };
+      const sc = statusColors[arguido.status] || [120, 120, 120];
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      const statusLabel = arguido.status.charAt(0).toUpperCase() + arguido.status.slice(1);
+      const statusTextW = doc.getTextWidth(statusLabel) + 8;
+      doc.setFillColor(sc[0], sc[1], sc[2]);
+      doc.roundedRect(pageWidth - margin - statusTextW, y - 5, statusTextW, 7, 1.5, 1.5, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.text(statusLabel, pageWidth - margin - statusTextW / 2, y, { align: "center" });
+
+      y += 12;
+
+      // === Dados Pessoais ===
+      const sectionTitle = (title: string) => {
+        doc.setFontSize(10);
+        doc.setTextColor(194, 65, 12);
+        doc.setFont("helvetica", "bold");
+        doc.text(title, margin, y);
+        doc.setDrawColor(194, 65, 12);
+        doc.setLineWidth(0.4);
+        doc.line(margin, y + 1.5, pageWidth - margin, y + 1.5);
+        y += 6;
+      };
+
+      const fieldRow = (label: string, value: string) => {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(120, 113, 108); // #78716c
+        doc.text(label, margin, y);
+        doc.setTextColor(28, 25, 23);
+        doc.setFont("helvetica", "bold");
+        doc.text(value || "—", margin + 50, y);
+        y += 5.5;
+      };
+
+      sectionTitle("DADOS PESSOAIS E PROCESSUAIS");
+      fieldRow("Nome:", arguido.nomeArguido);
+      fieldRow("Nº Processo:", arguido.numeroProcesso);
+      fieldRow("Nº ID:", arguido.numeroId);
+      fieldRow("Data de Detenção:", formatDate(arguido.dataDetencao));
+      fieldRow("Crime:", arguido.crime);
+      fieldRow("Magistrado:", arguido.magistrado);
+      fieldRow("Status:", statusLabel);
+      y += 3;
+
+      // === Datas e Prazos ===
+      sectionTitle("DATAS E PRAZOS PROCESSUAIS");
+      fieldRow("Medidas Aplicadas:", arguido.medidasAplicadas);
+      fieldRow("Data das Medidas:", formatDate(arguido.dataMedidasAplicadas));
+      fieldRow("Remessa ao JG:", formatDate(arguido.dataRemessaJg));
+      fieldRow("Data de Regresso:", formatDate(arguido.dataRegresso));
+      fieldRow("Remessa ao SIC:", formatDate(arguido.dataRemessaSic));
+      fieldRow("Data Prorrogação:", formatDate(arguido.dataProrrogacao));
+      fieldRow("Duração Prorrogação:", arguido.duracaoProrrogacao ? `${arguido.duracaoProrrogacao} meses` : "—");
+      y += 3;
+
+      // === Prazos Card ===
+      sectionTitle("PRAZOS CALCULADOS");
+      const days1 = getDaysRemaining(arguido.fimPrimeiroPrazo);
+      const days2 = getDaysRemaining(arguido.fimSegundoPrazo);
+
+      const drawDeadlineBox = (label: string, dateStr: string | null, days: number | null, yOffset: number) => {
+        const boxW = (pageWidth - margin * 2 - 6) / 2;
+        const boxH = 22;
+        const dc = days === null ? [229, 231, 235] : days < 0 || days <= 3 ? [217, 83, 79] : days <= 7 ? [240, 173, 78] : [92, 184, 92];
+        doc.setFillColor(dc[0], dc[1], dc[2]);
+        doc.roundedRect(margin + yOffset, y, boxW, boxH, 2, 2, "F");
+        doc.setTextColor(days === null ? 75 : 255, days === null ? 85 : 255, days === null ? 99 : 255);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.text(label, margin + yOffset + boxW / 2, y + 6, { align: "center" });
+        doc.setFontSize(9);
+        doc.text(dateStr ? formatDate(dateStr) : "Não definido", margin + yOffset + boxW / 2, y + 12, { align: "center" });
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.text(getDeadlineLabel(days), margin + yOffset + boxW / 2, y + 18, { align: "center" });
+      };
+
+      drawDeadlineBox("1º PRAZO (3 MESES)", arguido.fimPrimeiroPrazo, days1, 0);
+      drawDeadlineBox("2º PRAZO (PRORROGAÇÃO)", arguido.fimSegundoPrazo, days2, pageWidth / 2 - margin + 3);
+      y += 28;
+
+      // === Observações ===
+      if (arguido.remessaJgAlteracao || arguido.obs1 || arguido.obs2) {
+        sectionTitle("OBSERVAÇÕES");
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(87, 83, 78);
+        if (arguido.remessaJgAlteracao) {
+          doc.setFont("helvetica", "bold");
+          doc.text("Remessa JG / Alteração:", margin, y);
+          doc.setFont("helvetica", "normal");
+          y += 4.5;
+          const lines1 = doc.splitTextToSize(arguido.remessaJgAlteracao, pageWidth - margin * 2);
+          doc.text(lines1, margin, y);
+          y += lines1.length * 4 + 2;
+        }
+        if (arguido.obs1) {
+          doc.setFont("helvetica", "bold");
+          doc.text("Observação 1:", margin, y);
+          doc.setFont("helvetica", "normal");
+          y += 4.5;
+          const lines2 = doc.splitTextToSize(arguido.obs1, pageWidth - margin * 2);
+          doc.text(lines2, margin, y);
+          y += lines2.length * 4 + 2;
+        }
+        if (arguido.obs2) {
+          doc.setFont("helvetica", "bold");
+          doc.text("Observação 2:", margin, y);
+          doc.setFont("helvetica", "normal");
+          y += 4.5;
+          const lines3 = doc.splitTextToSize(arguido.obs2, pageWidth - margin * 2);
+          doc.text(lines3, margin, y);
+          y += lines3.length * 4 + 2;
+        }
+        y += 3;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      const safeName = arguido.nomeArguido.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_').substring(0, 50);
-      link.href = url;
-      link.download = `Ficha_${arguido.numeroId}_${safeName}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+
+      // === Alertas (se existirem) ===
+      if (arguido.alertas && (arguido as unknown as Record<string, unknown>).alertas && Array.isArray((arguido as unknown as Record<string, unknown>).alertas) && ((arguido as unknown as Record<string, unknown>).alertas as unknown[]).length > 0) {
+        sectionTitle("HISTÓRICO DE ALERTAS");
+        const alerts = (arguido as unknown as Record<string, unknown>).alertas as Array<Record<string, unknown>>;
+        autoTable(doc, {
+          startY: y,
+          head: [["Prazo", "Tipo", "Dias", "Data", "Status"]],
+          body: alerts.slice(0, 10).map(a => [
+            (a.tipo_alerta as string || "").replace("_", " "),
+            getDeadlineLabel(a.dias_restantes as number ?? null),
+            String(a.dias_restantes ?? ""),
+            a.data_disparo ? formatDate(a.data_disparo as string) : "—",
+            a.status_envio || "—",
+          ]),
+          theme: "grid",
+          styles: { fontSize: 7.5, cellPadding: 2 },
+          headStyles: { fillColor: [113, 113, 122], textColor: 255, fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [245, 245, 244] },
+          margin: { left: margin, right: margin },
+        });
+      }
+
+      // === FOOTER ===
+      const pageH = doc.internal.pageSize.getHeight();
+      doc.setFillColor(231, 229, 228);
+      doc.rect(0, pageH - 12, pageWidth, 12, "F");
+      doc.setFontSize(7);
+      doc.setTextColor(168, 162, 158);
+      doc.text("© 2024 Procuradoria-Geral da República de Angola — Sistema de Controlo de Arguidos em Prisão Preventiva", pageWidth / 2, pageH - 5, { align: "center" });
+      doc.text(`Gerado em ${new Date().toLocaleString("pt-AO")}`, pageWidth / 2, pageH - 1.5, { align: "center" });
+
+      // Save
+      const safeName = arguido.nomeArguido.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "_").substring(0, 50);
+      doc.save(`Ficha_${arguido.numeroId}_${safeName}.pdf`);
+
       toast({ title: "PDF gerado!", description: `Ficha de ${arguido.nomeArguido} descarregada.` });
     } catch (e) {
-      console.error('PDF download error:', e);
+      console.error("PDF generation error:", e);
       toast({ title: "Erro", description: "Falha ao gerar ficha PDF.", variant: "destructive" });
     }
   };
