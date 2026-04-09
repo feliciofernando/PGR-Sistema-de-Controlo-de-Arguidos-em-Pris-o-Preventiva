@@ -2149,10 +2149,10 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onView(a)}><Eye className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Ver</TooltipContent></Tooltip>
-                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(a)}><Edit className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Editar</TooltipContent></Tooltip>
-                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="sm" className="h-7 gap-1 text-[#D35400] hover:text-[#BA4A00] hover:bg-[#D35400]/10 text-sm font-semibold px-2" onClick={() => onPdf(a)}><FileDown className="h-3.5 w-3.5" />PDF</Button></TooltipTrigger><TooltipContent>Descarregar Ficha PDF</TooltipContent></Tooltip>
-                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => onDelete(a.id)}><Trash2 className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Eliminar</TooltipContent></Tooltip>
+                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onView(a); }}><Eye className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Ver</TooltipContent></Tooltip>
+                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onEdit(a); }}><Edit className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Editar</TooltipContent></Tooltip>
+                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="sm" className="h-7 gap-1 text-[#D35400] hover:text-[#BA4A00] hover:bg-[#D35400]/10 text-sm font-semibold px-2" onClick={(e) => { e.stopPropagation(); onPdf(a); }}><FileDown className="h-3.5 w-3.5" />PDF</Button></TooltipTrigger><TooltipContent>Descarregar Ficha PDF</TooltipContent></Tooltip>
+                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={(e) => { e.stopPropagation(); onDelete(a.id); }}><Trash2 className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Eliminar</TooltipContent></Tooltip>
                           </div>
                         </TableCell>
                       </TableRow>
