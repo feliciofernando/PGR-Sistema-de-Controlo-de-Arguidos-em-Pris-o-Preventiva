@@ -1,0 +1,58 @@
+{
+  "name": "PGR Angola - Controlo de Arguidos",
+  "short_name": "PGR Angola",
+  "description": "Sistema de Controlo dos Arguidos em Prisão Preventiva - Procuradoria-Geral da República de Angola",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#D35400",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "categories": ["government", "productivity", "utilities"],
+  "lang": "pt-AO",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/?view=dashboard",
+      "description": "Painel de controlo"
+    },
+    {
+      "name": "Novo Cadastro",
+      "url": "/?view=cadastro",
+      "description": "Cadastrar novo arguido"
+    },
+    {
+      "name": "Alertas",
+      "url": "/?view=alertas",
+      "description": "Ver alertas de prazos"
+    }
+  ]
+}
