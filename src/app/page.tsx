@@ -4,8 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+/* jsPDF loaded dynamically inside handleDownloadPdf to avoid Vercel bundling issues */
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -920,6 +919,10 @@ function AppContent() {
     try {
       toast({ title: "A gerar PDF...", description: `Ficha de ${arguido.nomeArguido}` });
 
+      // Dynamic import to avoid Vercel/Next.js bundling issues
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 14;
@@ -1069,10 +1072,11 @@ function AppContent() {
         y += 3;
       }
 
-      // === Alertas (se existirem) ===
-      if (arguido.alertas && (arguido as unknown as Record<string, unknown>).alertas && Array.isArray((arguido as unknown as Record<string, unknown>).alertas) && ((arguido as unknown as Record<string, unknown>).alertas as unknown[]).length > 0) {
+      // === Alertas (se existirem via detail view) ===
+      const rawAlertas = (arguido as unknown as Record<string, unknown>).alertas;
+      if (rawAlertas && Array.isArray(rawAlertas) && rawAlertas.length > 0) {
         sectionTitle("HISTÓRICO DE ALERTAS");
-        const alerts = (arguido as unknown as Record<string, unknown>).alertas as Array<Record<string, unknown>>;
+        const alerts = rawAlertas as Array<Record<string, unknown>>;
         autoTable(doc, {
           startY: y,
           head: [["Prazo", "Tipo", "Dias", "Data", "Status"]],
@@ -1107,7 +1111,7 @@ function AppContent() {
       toast({ title: "PDF gerado!", description: `Ficha de ${arguido.nomeArguido} descarregada.` });
     } catch (e) {
       console.error("PDF generation error:", e);
-      toast({ title: "Erro", description: "Falha ao gerar ficha PDF.", variant: "destructive" });
+      toast({ title: "Erro", description: "Falha ao gerar ficha PDF: " + String(e), variant: "destructive" });
     }
   };
 
