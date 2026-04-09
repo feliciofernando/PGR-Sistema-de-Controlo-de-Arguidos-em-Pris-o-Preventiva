@@ -45,6 +45,8 @@ import {
   Scale,
   Gavel,
   FileDown,
+  Shield,
+  ArrowRight,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -186,6 +188,95 @@ const emptyArguido: Omit<Arguido, "id" | "numeroId" | "createdAt" | "updatedAt">
   obs2: "",
   status: "ativo",
 };
+
+// ===================== LANDING PAGE =====================
+function LandingPage({ onEnter }: { onEnter: () => void }) {
+  const [isExiting, setIsExiting] = useState(false);
+
+  const handleEnter = () => {
+    setIsExiting(true);
+    setTimeout(() => onEnter(), 600);
+  };
+
+  return (
+    <div className={`min-h-screen flex flex-col items-center justify-center relative overflow-hidden ${isExiting ? 'landing-fadeout' : ''}`}
+      style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 25%, #16213e 50%, #0f3460 75%, #1a1a2e 100%)' }}>
+      
+      {/* Animated Fog Layers */}
+      <div className="landing-fog-layer landing-fog-1" />
+      <div className="landing-fog-layer landing-fog-2" />
+      <div className="landing-fog-layer landing-fog-3" />
+      <div className="landing-fog-layer landing-fog-4" />
+      <div className="landing-fog-layer landing-fog-5" />
+      
+      {/* Subtle grid overlay */}
+      <div className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
+          backgroundSize: '50px 50px',
+        }}
+      />
+
+      {/* Content */}
+      <div className="relative z-10 flex flex-col items-center text-center px-6 max-w-2xl">
+        
+        {/* PGR Insignia */}
+        <div className="landing-insignia mb-8">
+          <img 
+            src="/insignia-pgr.png" 
+            alt="Brasão PGR" 
+            className="w-40 h-40 sm:w-48 sm:h-48 md:w-56 md:h-56 object-contain"
+          />
+        </div>
+
+        {/* Title */}
+        <h1 className="landing-fade-in-up-delay-1 text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-white mb-3">
+          Procuradoria-Geral da República
+        </h1>
+
+        {/* Subtitle with shimmer */}
+        <div className="landing-fade-in-up-delay-2 mb-2">
+          <p className="text-lg sm:text-xl md:text-2xl font-semibold landing-text-shimmer">
+            REPÚBLICA DE ANGOLA
+          </p>
+        </div>
+
+        {/* System name */}
+        <div className="landing-fade-in-up-delay-2 mt-4 mb-10">
+          <div className="inline-flex items-center gap-2 bg-white/[0.06] backdrop-blur-sm border border-white/[0.1] rounded-full px-6 py-3">
+            <Scale className="w-5 h-5 text-orange-400" />
+            <span className="text-sm sm:text-base text-stone-300 font-medium">
+              Sistema de Controlo de Arguidos em Prisão Preventiva
+            </span>
+          </div>
+        </div>
+
+        {/* Enter Button */}
+        <div className="landing-fade-in-up-delay-3">
+          <button
+            onClick={handleEnter}
+            className="group relative px-10 py-4 bg-gradient-to-r from-[#c2410c] via-[#ea580c] to-[#c2410c] text-white font-bold text-base sm:text-lg rounded-xl shadow-[0_0_30px_rgba(194,65,12,0.3)] hover:shadow-[0_0_50px_rgba(194,65,12,0.5)] transition-all duration-500 overflow-hidden cursor-pointer"
+          >
+            {/* Shimmer overlay on hover */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+            <span className="relative flex items-center gap-3">
+              <Shield className="w-5 h-5" />
+              ACESSAR SISTEMA
+              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </span>
+          </button>
+        </div>
+
+        {/* Footer text */}
+        <div className="landing-fade-in-up-delay-3 mt-12">
+          <p className="text-[11px] text-stone-500 tracking-wide">
+            Acesso restrito e monitorizado — PGR Angola © {new Date().getFullYear()}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ===================== LOGIN PAGE =====================
 function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: string; role: string }) => void }) {
@@ -2590,17 +2681,29 @@ function DetailField({ label, value }: { label: string; value: string }) {
 
 // ===================== ENTRY POINT (Auth gate) =====================
 export default function HomePage() {
+  const [showLanding, setShowLanding] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authUser, setAuthUser] = useState<{ username: string; nome: string; role: string } | null>(null);
+
+  const handleEnterLanding = () => {
+    setShowLanding(false);
+  };
 
   const handleLogin = (user: { username: string; nome: string; role: string }) => {
     setIsAuthenticated(true);
     setAuthUser(user);
   };
 
+  // Step 1: Landing page with animated fog background
+  if (showLanding) {
+    return <LandingPage onEnter={handleEnterLanding} />;
+  }
+
+  // Step 2: Login page
   if (!isAuthenticated) {
     return <LoginPage onLogin={handleLogin} />;
   }
 
+  // Step 3: Main application
   return <AppContent />;
 }

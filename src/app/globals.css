@@ -213,3 +213,151 @@
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+
+/* ============================================= */
+/* LANDING PAGE — ANIMATED FOG / MIST EFFECT     */
+/* ============================================= */
+
+@keyframes fog-drift-1 {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.4; }
+  25% { transform: translate(80px, -30px) scale(1.1); opacity: 0.6; }
+  50% { transform: translate(-40px, 40px) scale(0.95); opacity: 0.35; }
+  75% { transform: translate(60px, 20px) scale(1.05); opacity: 0.55; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.4; }
+}
+
+@keyframes fog-drift-2 {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.3; }
+  25% { transform: translate(-70px, 50px) scale(1.15); opacity: 0.5; }
+  50% { transform: translate(50px, -40px) scale(0.9); opacity: 0.25; }
+  75% { transform: translate(-30px, -20px) scale(1.08); opacity: 0.45; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.3; }
+}
+
+@keyframes fog-drift-3 {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.25; }
+  33% { transform: translate(100px, 30px) scale(1.2); opacity: 0.45; }
+  66% { transform: translate(-60px, -50px) scale(0.85); opacity: 0.2; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.25; }
+}
+
+@keyframes fog-drift-4 {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.2; }
+  30% { transform: translate(-90px, 60px) scale(1.1); opacity: 0.4; }
+  60% { transform: translate(70px, -30px) scale(0.95); opacity: 0.15; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.2; }
+}
+
+@keyframes fog-drift-5 {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.35; }
+  20% { transform: translate(40px, -60px) scale(1.12); opacity: 0.5; }
+  40% { transform: translate(-80px, 20px) scale(0.9); opacity: 0.3; }
+  60% { transform: translate(50px, 50px) scale(1.08); opacity: 0.45; }
+  80% { transform: translate(-20px, -40px) scale(1.05); opacity: 0.35; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.35; }
+}
+
+@keyframes insignia-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 20px rgba(194, 65, 12, 0.3)) drop-shadow(0 0 60px rgba(194, 65, 12, 0.1));
+  }
+  50% {
+    filter: drop-shadow(0 0 35px rgba(194, 65, 12, 0.5)) drop-shadow(0 0 80px rgba(194, 65, 12, 0.2));
+  }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-scale {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes text-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes landing-fadeout {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.landing-fog-layer {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.landing-fog-1 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(194, 65, 12, 0.35) 0%, transparent 70%);
+  top: -10%; left: -10%;
+  animation: fog-drift-1 25s ease-in-out infinite;
+}
+
+.landing-fog-2 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(28, 61, 90, 0.4) 0%, transparent 70%);
+  bottom: -15%; right: -10%;
+  animation: fog-drift-2 30s ease-in-out infinite;
+}
+
+.landing-fog-3 {
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, rgba(154, 52, 18, 0.2) 0%, transparent 70%);
+  top: 30%; right: 20%;
+  animation: fog-drift-3 35s ease-in-out infinite;
+}
+
+.landing-fog-4 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(234, 88, 12, 0.25) 0%, transparent 70%);
+  bottom: 20%; left: 15%;
+  animation: fog-drift-4 20s ease-in-out infinite;
+}
+
+.landing-fog-5 {
+  width: 550px; height: 550px;
+  background: radial-gradient(circle, rgba(120, 113, 108, 0.15) 0%, transparent 70%);
+  top: 50%; left: 40%;
+  animation: fog-drift-5 28s ease-in-out infinite;
+}
+
+.landing-insignia {
+  animation: insignia-glow 4s ease-in-out infinite, fade-in-scale 1.5s ease-out both;
+}
+
+.landing-fade-in-up {
+  animation: fade-in-up 1s ease-out both;
+}
+
+.landing-fade-in-up-delay-1 {
+  animation: fade-in-up 1s ease-out 0.3s both;
+}
+
+.landing-fade-in-up-delay-2 {
+  animation: fade-in-up 1s ease-out 0.6s both;
+}
+
+.landing-fade-in-up-delay-3 {
+  animation: fade-in-up 1s ease-out 0.9s both;
+}
+
+.landing-text-shimmer {
+  background: linear-gradient(90deg, #ffffff 0%, #fcd34d 25%, #ffffff 50%, #fb923c 75%, #ffffff 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 6s linear infinite;
+}
+
+.landing-fadeout {
+  animation: landing-fadeout 0.6s ease-out forwards;
+}
