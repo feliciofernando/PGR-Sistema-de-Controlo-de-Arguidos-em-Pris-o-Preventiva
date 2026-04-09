@@ -2026,7 +2026,7 @@ function CadastroView({ formData, setFormData, onSubmit }: {
 }
 
 // ===================== GESTÃO VIEW =====================
-function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, currentPage, setCurrentPage, totalPages, totalRecords, onEdit, onDelete, onView, onRefresh, onExport, onNew }: {
+function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, currentPage, setCurrentPage, totalPages, totalRecords, onEdit, onDelete, onView, onPdf, onRefresh, onExport, onNew }: {
   arguidos: Arguido[];
   loading: boolean;
   searchTerm: string; setSearchTerm: (v: string) => void;

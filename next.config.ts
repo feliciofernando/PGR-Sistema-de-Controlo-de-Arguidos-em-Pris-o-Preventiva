@@ -8,15 +8,8 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   // Prevent jspdf from being bundled server-side (it's client-only)
   serverExternalPackages: ["jspdf", "jspdf-autotable"],
-  webpack: (config) => {
-    // Force jspdf to be treated as client-only
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      "jspdf": false,
-      "jspdf-autotable": false,
-    };
-    return config;
-  },
+  // Turbopack config (Next.js 16 default bundler)
+  turbopack: {},
   async headers() {
     return [
       // Service Worker headers
