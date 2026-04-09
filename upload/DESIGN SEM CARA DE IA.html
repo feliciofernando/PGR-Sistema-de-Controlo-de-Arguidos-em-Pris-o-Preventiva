@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<title>Gestão de Arguidos</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial;
+  background: #2b2f34;
+  color: #eee;
+}
+
+/* NAVBAR */
+.navbar {
+  background: linear-gradient(#3c4147, #1f2327);
+  padding: 12px 20px;
+  display: flex;
+  gap: 15px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2),
+              0 2px 5px rgba(0,0,0,0.6);
+}
+
+.nav-btn {
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: linear-gradient(#4b5158, #2a2e33);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2),
+              0 2px 4px rgba(0,0,0,0.5);
+  cursor: pointer;
+}
+
+.nav-btn.active {
+  background: linear-gradient(#ff8c3a, #cc5a00);
+}
+
+/* CONTAINER */
+.container {
+  padding: 30px;
+}
+
+/* TITLE */
+h1 {
+  margin-bottom: 5px;
+}
+
+.sub {
+  color: #aaa;
+  margin-bottom: 20px;
+}
+
+/* ACTION BUTTONS */
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-dark {
+  background: linear-gradient(#4b5158, #2a2e33);
+  color: white;
+}
+
+.btn-orange {
+  background: linear-gradient(#ff8c3a, #cc5a00);
+  color: white;
+}
+
+/* SEARCH */
+.search {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.search input, .search select {
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: #1f2327;
+  color: white;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.7);
+}
+
+/* TABLE */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+}
+
+.table thead {
+  background: linear-gradient(#4b5158, #2a2e33);
+}
+
+.table th, .table td {
+  padding: 14px;
+  text-align: left;
+}
+
+.table tbody tr {
+  background: #f5f5f5;
+  color: #222;
+}
+
+.table tbody tr:nth-child(even) {
+  background: #e8e8e8;
+}
+
+/* BADGES */
+.badge {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.red { background: #d9534f; color: white; }
+.green { background: #5cb85c; color: white; }
+.yellow { background: #f0ad4e; color: white; }
+
+/* STATUS */
+.status {
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-weight: bold;
+}
+
+.status.active {
+  background: #1c3d5a;
+  color: white;
+}
+
+.status.expired {
+  background: #a10000;
+  color: white;
+}
+
+/* ICON BUTTONS */
+.icon-btn {
+  cursor: pointer;
+  margin-right: 8px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="navbar">
+  <div class="nav-btn">Painel</div>
+  <div class="nav-btn">Cadastro</div>
+  <div class="nav-btn active">Gestão</div>
+  <div class="nav-btn">Alertas</div>
+  <div class="nav-btn">Relatórios</div>
+</div>
+
+<div class="container">
+
+  <h1>Gestão de Arguidos</h1>
+  <div class="sub">10 registros encontrados</div>
+
+  <div class="actions">
+    <button class="btn btn-dark">Exportar</button>
+    <button class="btn btn-orange">+ Novo</button>
+  </div>
+
+  <div class="search">
+    <input type="text" placeholder="Pesquisar por nome, Nº processo ou ID..." style="flex:1;">
+    <select>
+      <option>Status</option>
+    </select>
+    <select>
+      <option>Prazo</option>
+    </select>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nº Processo</th>
+        <th>Nome</th>
+        <th>Crime</th>
+        <th>Magistrado</th>
+        <th>Prazo</th>
+        <th>Status</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      <tr>
+        <td>PGR-001</td>
+        <td>555356</td>
+        <td>Felicio Fernando</td>
+        <td>Crime informático</td>
+        <td>Manuel</td>
+        <td><span class="badge red">Vencido há 6 dias</span></td>
+        <td><span class="status active">Ativo</span></td>
+        <td>👁 ✏️ 📄 🗑</td>
+      </tr>
+
+      <tr>
+        <td>PGR-002</td>
+        <td>PGR-2026-0010</td>
+        <td>Beatriz Zangado</td>
+        <td>Crime informático</td>
+        <td>Helena Lopes</td>
+        <td><span class="badge yellow">Vence hoje!</span></td>
+        <td><span class="status expired">Vencido</span></td>
+        <td>👁 ✏️ 📄 🗑</td>
+      </tr>
+
+      <tr>
+        <td>PGR-003</td>
+        <td>PGR-2026-0011</td>
+        <td>Fernando Mateus</td>
+        <td>Peculato</td>
+        <td>António Ferreira</td>
+        <td><span class="badge yellow">2 dias restantes</span></td>
+        <td><span class="status active">Ativo</span></td>
+        <td>👁 ✏️ 📄 🗑</td>
+      </tr>
+
+    </tbody>
+  </table>
+
+</div>
+
+</body>
+</html>
