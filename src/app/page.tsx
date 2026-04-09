@@ -189,17 +189,65 @@ const emptyArguido: Omit<Arguido, "id" | "numeroId" | "createdAt" | "updatedAt">
   status: "ativo",
 };
 
+// ===================== PUBLIC SEARCH TYPES =====================
+interface PublicArguidoSummary {
+  id: number;
+  numeroId: string;
+  numeroProcesso: string;
+  nomeArguido: string;
+  dataDetencao: string | null;
+  crime: string;
+  medidasAplicadas: string;
+  dataMedidasAplicadas: string | null;
+  fimPrimeiroPrazo: string | null;
+  fimSegundoPrazo: string | null;
+  status: string;
+  magistrado: string;
+}
+
 // ===================== LANDING PAGE =====================
 function LandingPage({ onEnter }: { onEnter: () => void }) {
   const [isExiting, setIsExiting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<PublicArguidoSummary[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchDone, setSearchDone] = useState(false);
+  const [searchMsg, setSearchMsg] = useState('');
 
   const handleEnter = () => {
     setIsExiting(true);
     setTimeout(() => onEnter(), 600);
   };
 
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setSearchLoading(true);
+    setSearchDone(false);
+    setSearchMsg('');
+    setSearchResults([]);
+
+    try {
+      const res = await fetch(`/api/arguidos/search-public?q=${encodeURIComponent(searchQuery.trim())}`);
+      const data = await res.json();
+      if (data.found) {
+        setSearchResults(data.results);
+        setSearchMsg('');
+      } else {
+        setSearchResults([]);
+        setSearchMsg(data.message || 'Nenhum processo encontrado.');
+      }
+    } catch {
+      setSearchMsg('Erro de ligação ao servidor.');
+    } finally {
+      setSearchDone(true);
+      setSearchLoading(false);
+    }
+  };
+
   return (
-    <div className={`min-h-screen flex flex-col items-center justify-center relative overflow-hidden ${isExiting ? 'landing-fadeout' : ''}`}
+    <div className={`min-h-screen flex flex-col items-center justify-start relative overflow-hidden ${isExiting ? 'landing-fadeout' : ''}`}
       style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 25%, #16213e 50%, #0f3460 75%, #1a1a2e 100%)' }}>
       
       {/* Animated Fog Layers */}
@@ -218,7 +266,7 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
       />
 
       {/* Content */}
-      <div className="relative z-10 flex flex-col items-center text-center px-6 max-w-2xl">
+      <div className="relative z-10 flex flex-col items-center text-center px-6 pt-12 sm:pt-16 pb-8 w-full max-w-3xl">
         
         {/* PGR Insignia */}
         <div className="landing-insignia mb-8">
@@ -242,7 +290,7 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
         </div>
 
         {/* System name */}
-        <div className="landing-fade-in-up-delay-2 mt-4 mb-10">
+        <div className="landing-fade-in-up-delay-2 mt-4 mb-8">
           <div className="inline-flex items-center gap-2 bg-white/[0.06] backdrop-blur-sm border border-white/[0.1] rounded-full px-6 py-3">
             <Scale className="w-5 h-5 text-orange-400" />
             <span className="text-sm sm:text-base text-stone-300 font-medium">
@@ -252,7 +300,7 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
         </div>
 
         {/* Enter Button */}
-        <div className="landing-fade-in-up-delay-3">
+        <div className="landing-fade-in-up-delay-3 mb-10">
           <button
             onClick={handleEnter}
             className="group relative px-10 py-4 bg-gradient-to-r from-[#c2410c] via-[#ea580c] to-[#c2410c] text-white font-bold text-base sm:text-lg rounded-xl shadow-[0_0_30px_rgba(194,65,12,0.3)] hover:shadow-[0_0_50px_rgba(194,65,12,0.5)] transition-all duration-500 overflow-hidden cursor-pointer"
@@ -267,12 +315,147 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
           </button>
         </div>
 
+        {/* Divider */}
+        <div className="w-full max-w-md flex items-center gap-4 mb-6 landing-fade-in-up-delay-3">
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          <span className="text-[11px] uppercase tracking-[0.2em] text-stone-500 font-medium">Pesquisa Pública</span>
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+        </div>
+
+        {/* Search Section */}
+        <div className="landing-fade-in-up-delay-3 w-full max-w-lg">
+          <form onSubmit={handleSearch} className="relative flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Nº Processo, Nome ou ID do Arguido..."
+                className="w-full h-11 pl-10 pr-4 bg-white/[0.07] backdrop-blur-sm border border-white/[0.12] rounded-xl text-sm text-white placeholder-stone-500 focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/30 transition-all"
+                autoComplete="off"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={searchLoading || !searchQuery.trim()}
+              className="h-11 px-5 bg-gradient-to-r from-[#c2410c] to-[#ea580c] text-white font-semibold text-sm rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 cursor-pointer"
+            >
+              {searchLoading ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <Search className="w-4 h-4" />
+                  <span className="hidden sm:inline">Pesquisar</span>
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* Search Results */}
+        {searchDone && searchResults.length > 0 && (
+          <div className="w-full max-w-2xl mt-6 space-y-3 animate-[fadeIn_0.3s_ease-out]">
+            <p className="text-xs text-stone-400 text-center">
+              {searchResults.length} resultado{searchResults.length > 1 ? 's' : ''} encontrado{searchResults.length > 1 ? 's' : ''}
+            </p>
+            {searchResults.map((item) => {
+              const days1 = getDaysRemaining(item.fimPrimeiroPrazo);
+              const days2 = getDaysRemaining(item.fimSegundoPrazo);
+              return (
+                <div
+                  key={item.id}
+                  className="bg-white/[0.06] backdrop-blur-md border border-white/[0.1] rounded-2xl p-5 text-left hover:border-orange-500/30 hover:bg-white/[0.08] transition-all duration-300"
+                >
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-bold text-white truncate">{item.nomeArguido}</h3>
+                      <p className="text-xs text-stone-400 mt-0.5">
+                        {item.numeroId} · Processo Nº {item.numeroProcesso}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-wide ${
+                      item.status === 'ativo' ? 'bg-[#1c3d5a] text-blue-300' :
+                      item.status === 'vencido' ? 'bg-[#a10000]/80 text-red-300' :
+                      'bg-stone-600/80 text-stone-300'
+                    }`}>
+                      {item.status}
+                    </span>
+                  </div>
+
+                  {/* Info Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <InfoPill icon={<Calendar className="w-3 h-3" />} label="Detenção" value={formatDate(item.dataDetencao)} />
+                    <InfoPill icon={<Gavel className="w-3 h-3" />} label="Crime" value={item.crime || '—'} />
+                    <InfoPill icon={<Building2 className="w-3 h-3" />} label="Medida" value={item.medidasAplicadas || '—'} />
+                    <InfoPill icon={<UserPlus className="w-3 h-3" />} label="Magistrado" value={item.magistrado || '—'} />
+                    <InfoPill
+                      icon={<Clock className="w-3 h-3" />}
+                      label="1º Prazo"
+                      value={item.fimPrimeiroPrazo ? formatDate(item.fimPrimeiroPrazo) : '—'}
+                      badge={days1 !== null ? getDeadlineLabel(days1) : undefined}
+                      badgeColor={days1 !== null ? getDeadlineColor(days1) : undefined}
+                    />
+                    <InfoPill
+                      icon={<Clock className="w-3 h-3" />}
+                      label="2º Prazo"
+                      value={item.fimSegundoPrazo ? formatDate(item.fimSegundoPrazo) : '—'}
+                      badge={days2 !== null ? getDeadlineLabel(days2) : undefined}
+                      badgeColor={days2 !== null ? getDeadlineColor(days2) : undefined}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* No Results Message */}
+        {searchDone && searchResults.length === 0 && searchMsg && (
+          <div className="w-full max-w-lg mt-6 animate-[fadeIn_0.3s_ease-out]">
+            <div className="bg-white/[0.04] backdrop-blur-sm border border-white/[0.08] rounded-2xl p-6 text-center">
+              <AlertCircle className="w-8 h-8 text-stone-500 mx-auto mb-3" />
+              <p className="text-sm text-stone-400">{searchMsg}</p>
+              <p className="text-xs text-stone-600 mt-1">
+                Tente pesquisar pelo nome, número do processo ou ID.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Footer text */}
-        <div className="landing-fade-in-up-delay-3 mt-12">
+        <div className="landing-fade-in-up-delay-3 mt-auto pt-10">
           <p className="text-[11px] text-stone-500 tracking-wide">
             Acesso restrito e monitorizado — PGR Angola © {new Date().getFullYear()}
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ===================== INFO PILL COMPONENT =====================
+function InfoPill({ icon, label, value, badge, badgeColor }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  badge?: string;
+  badgeColor?: string;
+}) {
+  return (
+    <div className="bg-white/[0.04] rounded-lg px-3 py-2.5 flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 text-stone-500">
+        {icon}
+        <span className="text-[10px] uppercase tracking-wide font-medium">{label}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-stone-200 font-medium truncate">{value}</span>
+        {badge && badgeColor && (
+          <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeColor}`}>
+            {badge}
+          </span>
+        )}
       </div>
     </div>
   );

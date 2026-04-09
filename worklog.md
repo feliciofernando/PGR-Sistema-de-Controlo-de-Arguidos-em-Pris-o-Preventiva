@@ -41,3 +41,27 @@ Work Log:
 Stage Summary:
 - Git state cleaned successfully
 - All project files read for Flutter rebuild prompt
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Add public defendant process search on landing page below "Acessar Sistema" button
+
+Work Log:
+- Created `/api/arguidos/search-public/route.ts` — public API endpoint that searches by nome, número do processo, or ID
+- API returns only limited/safe fields (no observations, no internal notes) for privacy
+- Modified `LandingPage` component in `page.tsx` to add search section below "ACESSAR SISTEMA" button
+- Added search form with input field and submit button, styled to match dark fog theme
+- Added divider ("Pesquisa Pública") between access button and search
+- Created `InfoPill` component for displaying compact summary fields (Detenção, Crime, Medida, Magistrado, Prazos)
+- Each result card shows: name, ID, process number, status badge, 6 info pills with deadline indicators
+- Added "no results" empty state with helpful message
+- Added `fadeIn` keyframe animation in `globals.css` for smooth result appearance
+- Changed landing page layout from `justify-center` to `justify-start` with padding to accommodate search results below fold
+- Lint passes with no errors
+
+Stage Summary:
+- Public search endpoint: GET /api/arguidos/search-public?q=<term>
+- Landing page now includes "Pesquisa Pública" section with search bar and result cards
+- Search results show ficha resumida (summary card) with key defendant info
+- Deadline badges show color-coded status (green/yellow/red) using existing helper functions
