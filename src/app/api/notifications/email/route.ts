@@ -100,7 +100,7 @@ export async function GET() {
     // Try to send via Resend (if API key configured)
     const resendApiKey = process.env.RESEND_API_KEY;
     const adminEmail = process.env.ADMIN_EMAIL || '';
-    const emailFrom = process.env.EMAIL_FROM || 'PGR Sistema <onboarding@resend.dev>';
+    const emailFrom = process.env.EMAIL_FROM || 'PGR Sistema <noreply@pgr-lunda-sul.com>';
 
     if (resendApiKey && adminEmail) {
       try {
@@ -254,7 +254,7 @@ export async function POST() {
   try {
     const resendApiKey = process.env.RESEND_API_KEY;
     const adminEmail = process.env.ADMIN_EMAIL || '';
-    const emailFrom = process.env.EMAIL_FROM || 'PGR Sistema <onboarding@resend.dev>';
+    const emailFrom = process.env.EMAIL_FROM || 'PGR Sistema <noreply@pgr-lunda-sul.com>';
 
     if (!resendApiKey || !adminEmail) {
       return NextResponse.json({
