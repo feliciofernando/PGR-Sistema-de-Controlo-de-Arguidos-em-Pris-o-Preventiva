@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     // Search across multiple fields
     if (search) {
-      query = query.or(`nome_arguido.ilike.%${search}%,numero_processo.ilike.%${search}%,numero_id.ilike.%${search}%`);
+      query = query.or(`nome_arguido.ilike.%${search}%,numero_processo.ilike.%${search}%,numero_id.ilike.%${search}%,nome_pai.ilike.%${search}%,nome_mae.ilike.%${search}%`);
     }
     if (status) {
       query = query.eq('status', status);
@@ -104,6 +104,8 @@ export async function POST(request: NextRequest) {
       numero_id: numeroId,
       numero_processo: body.numeroProcesso || '',
       nome_arguido: body.nomeArguido || '',
+      nome_pai: body.nomePai || '',
+      nome_mae: body.nomeMae || '',
       data_detencao: body.dataDetencao || null,
       crime: body.crime || '',
       data_remessa_jg: body.dataRemessaJg || null,

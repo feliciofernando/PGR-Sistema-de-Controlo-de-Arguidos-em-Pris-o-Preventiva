@@ -59,6 +59,8 @@ interface Arguido {
   numeroId: string;
   numeroProcesso: string;
   nomeArguido: string;
+  nomePai: string;
+  nomeMae: string;
   dataDetencao: string | null;
   crime: string;
   dataRemessaJg: string | null;
@@ -172,6 +174,8 @@ function getStatusBadgeVariant(status: string): "default" | "secondary" | "destr
 const emptyArguido: Omit<Arguido, "id" | "numeroId" | "createdAt" | "updatedAt"> = {
   numeroProcesso: "",
   nomeArguido: "",
+  nomePai: "",
+  nomeMae: "",
   dataDetencao: null,
   crime: "",
   dataRemessaJg: null,
@@ -1097,6 +1101,8 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     setFormData({
       numeroProcesso: arguido.numeroProcesso,
       nomeArguido: arguido.nomeArguido,
+      nomePai: arguido.nomePai,
+      nomeMae: arguido.nomeMae,
       dataDetencao: arguido.dataDetencao,
       crime: arguido.crime,
       dataRemessaJg: arguido.dataRemessaJg,
@@ -1263,6 +1269,8 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
       sectionTitle("DADOS PESSOAIS E PROCESSUAIS");
       fieldRow("Nome:", arguido.nomeArguido);
+      fieldRow("Nome do Pai:", arguido.nomePai || "—");
+      fieldRow("Nome da Mãe:", arguido.nomeMae || "—");
       fieldRow("Nº Processo:", arguido.numeroProcesso);
       fieldRow("Nº ID:", arguido.numeroId);
       fieldRow("Data de Detenção:", formatDate(arguido.dataDetencao));
@@ -1920,6 +1928,16 @@ function FormFields({ formData, setFormData }: {
       <div className="space-y-2">
         <Label htmlFor="nomeArguido" className="text-pgr-text">Nome do Arguido *</Label>
         <Input id="nomeArguido" value={formData.nomeArguido} onChange={e => update("nomeArguido", e.target.value)} placeholder="Nome completo" className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="nomePai" className="text-pgr-text">Nome do Pai</Label>
+        <Input id="nomePai" value={formData.nomePai} onChange={e => update("nomePai", e.target.value)} placeholder="Nome do pai" className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="nomeMae" className="text-pgr-text">Nome da Mãe</Label>
+        <Input id="nomeMae" value={formData.nomeMae} onChange={e => update("nomeMae", e.target.value)} placeholder="Nome da mãe" className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
       </div>
 
       <div className="space-y-2">
@@ -3035,13 +3053,16 @@ function DetailView({ arguido }: { arguido: Arguido }) {
       {/* Details Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
         <div className="space-y-3">
+          <DetailField label="Nome do Arguido" value={arguido.nomeArguido} />
+          <DetailField label="Nome do Pai" value={arguido.nomePai || '—'} />
+          <DetailField label="Nome da Mãe" value={arguido.nomeMae || '—'} />
           <DetailField label="Data de Detenção" value={formatDate(arguido.dataDetencao)} />
           <DetailField label="Crime" value={arguido.crime} />
-          <DetailField label="Medidas Aplicadas" value={arguido.medidasAplicadas} />
-          <DetailField label="Data das Medidas" value={formatDate(arguido.dataMedidasAplicadas)} />
           <DetailField label="Magistrado" value={arguido.magistrado} />
         </div>
         <div className="space-y-3">
+          <DetailField label="Medidas Aplicadas" value={arguido.medidasAplicadas} />
+          <DetailField label="Data das Medidas" value={formatDate(arguido.dataMedidasAplicadas)} />
           <DetailField label="Remessa ao JG" value={formatDate(arguido.dataRemessaJg)} />
           <DetailField label="Data de Regresso" value={formatDate(arguido.dataRegresso)} />
           <DetailField label="Remessa ao SIC" value={formatDate(arguido.dataRemessaSic)} />

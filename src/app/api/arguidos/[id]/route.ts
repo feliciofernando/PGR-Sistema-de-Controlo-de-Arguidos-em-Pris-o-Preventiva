@@ -66,6 +66,8 @@ export async function PUT(
     const updateData: Record<string, unknown> = {
       numero_processo: body.numeroProcesso ?? existing.numero_processo,
       nome_arguido: body.nomeArguido ?? existing.nome_arguido,
+      nome_pai: body.nomePai ?? existing.nome_pai,
+      nome_mae: body.nomeMae ?? existing.nome_mae,
       data_detencao: body.dataDetencao ?? existing.data_detencao,
       crime: body.crime ?? existing.crime,
       data_remessa_jg: body.dataRemessaJg ?? existing.data_remessa_jg,
