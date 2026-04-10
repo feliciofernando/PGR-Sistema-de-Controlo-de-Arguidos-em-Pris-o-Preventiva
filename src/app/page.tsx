@@ -274,16 +274,16 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
       <div className="relative z-10 flex flex-col items-center text-center px-6 pt-12 sm:pt-16 pb-8 w-full max-w-3xl">
         
         {/* PGR Insignia */}
-        <div className="landing-insignia mb-8">
+        <div className="landing-insignia mb-6">
           <img 
             src="/insignia-pgr.png" 
             alt="Brasão PGR" 
-            className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 object-contain"
+            className="w-20 h-20 sm:w-20 sm:h-20 md:w-22 md:h-22 object-contain"
           />
         </div>
 
         {/* Title */}
-        <h1 className="landing-fade-in-up-delay-1 text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-white mb-3">
+        <h1 className="landing-fade-in-up-delay-1 text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-white mb-3">
           Procuradoria-Geral da República
         </h1>
 
@@ -322,29 +322,29 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
 
         {/* Divider */}
         <div className="w-full max-w-md flex items-center gap-4 mb-6 landing-fade-in-up-delay-3">
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-          <span className="text-[11px] uppercase tracking-[0.2em] text-stone-500 font-medium">Pesquisa Pública</span>
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+          <span className="text-xs uppercase tracking-[0.2em] text-stone-300 font-semibold">Pesquisa Pública</span>
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
         </div>
 
         {/* Search Section */}
         <div className="landing-fade-in-up-delay-3 w-full max-w-lg">
-          <form onSubmit={handleSearch} className="relative flex gap-2">
+          <form onSubmit={handleSearch} className="relative flex gap-2.5">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/60 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Nº Processo, Nome ou ID do Arguido..."
-                className="w-full h-11 pl-10 pr-4 bg-white/[0.07] backdrop-blur-sm border border-white/[0.12] rounded-xl text-sm text-white placeholder-stone-500 focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/30 transition-all"
+                className="w-full h-12 pl-11 pr-4 bg-white/[0.12] backdrop-blur-md border border-white/[0.20] rounded-xl text-sm text-white placeholder-stone-400 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/20 transition-all"
                 autoComplete="off"
               />
             </div>
             <button
               type="submit"
               disabled={searchLoading || !searchQuery.trim()}
-              className="h-11 px-5 bg-gradient-to-r from-[#c2410c] to-[#ea580c] text-white font-semibold text-sm rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 cursor-pointer"
+              className="h-12 px-6 bg-white/[0.15] backdrop-blur-md border border-white/[0.25] text-white font-semibold text-sm rounded-xl hover:bg-white/[0.22] disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-2 cursor-pointer"
             >
               {searchLoading ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
