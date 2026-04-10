@@ -127,11 +127,19 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-pgr-bg text-pgr-text;
+    @apply bg-background text-foreground;
     font-family: "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+  background: #57534e;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #78716c;
 }
 
 /* Custom scrollbar */
@@ -212,6 +220,21 @@
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
+}
+
+/* Floating action bar animation */
+@keyframes slideUpBar {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.animate-slide-up-bar {
+  animation: slideUpBar 0.3s ease-out;
 }
 
 /* ============================================= */
@@ -365,4 +388,162 @@
 
 .landing-fadeout {
   animation: landing-fadeout 0.6s ease-out forwards;
+}
+
+/* ============================================= */
+/* PRINT STYLES — Phase 9                        */
+/* ============================================= */
+
+@media print {
+  /* Hide everything except the print content */
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide navigation, buttons, footer, overlays */
+  .no-print,
+  header,
+  footer,
+  nav,
+  .pgr-no-print,
+  [data-radix-popper-content-wrapper],
+  button,
+  .toast,
+  .fixed,
+  .sticky,
+  [role="alertdialog"],
+  [data-state="open"],
+  .in-app-notification {
+    display: none !important;
+  }
+
+  /* Show only the detail view content */
+  .print-area {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Ensure the dialog content is visible */
+  [role="dialog"] {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    border-radius: 0 !important;
+  }
+
+  /* Hide DialogHeader close button area, DialogFooter */
+  [role="dialog"] > [data-slot="dialog-header"] {
+    border-bottom: 2px solid #333;
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+
+  [role="dialog"] > [data-slot="dialog-footer"],
+  [role="dialog"] > footer {
+    display: none !important;
+  }
+
+  /* Print header on every page */
+  @page {
+    size: A4;
+    margin: 18mm 12mm 22mm 12mm;
+
+    @top-center {
+      content: "PGR ANGOLA — Ficha de Arguido";
+      font-size: 9pt;
+      color: #666;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 4px;
+    }
+
+    @bottom-center {
+      content: "Página " counter(page) " de " counter(pages);
+      font-size: 8pt;
+      color: #999;
+      border-top: 1px solid #ddd;
+      padding-top: 4px;
+    }
+  }
+
+  /* Fallback header/footer using fixed positioning for browsers without @page margin box support */
+  .print-header-fallback {
+    display: block !important;
+    position: running(printHeader);
+  }
+
+  /* Style tables for print */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th, td {
+    border: 1px solid #ccc !important;
+    padding: 6px 8px;
+    font-size: 10pt;
+    color: black !important;
+  }
+  th {
+    background: #f0f0f0 !important;
+    color: #333 !important;
+    font-weight: 700;
+  }
+  tr:nth-child(even) {
+    background: #fafafa !important;
+  }
+
+  /* Links */
+  a {
+    color: #333 !important;
+    text-decoration: none !important;
+  }
+
+  /* Cards */
+  .print-area > div,
+  .print-area > section {
+    break-inside: avoid;
+  }
+
+  /* Badge colors render as gray in print */
+  [class*="rounded-full"],
+  [data-slot="badge"] {
+    background: #e5e7eb !important;
+    color: #374151 !important;
+    border: 1px solid #d1d5db !important;
+  }
+
+  /* All backgrounds white, text black */
+  div, span, p, h1, h2, h3, h4, h5, h6, li {
+    background: transparent !important;
+  }
+  div[style*="background"], section[style*="background"] {
+    background: white !important;
+  }
+
+  /* Separator lines */
+  hr, [data-slot="separator"] {
+    border-color: #ccc !important;
+  }
+
+  /* Progress bars */
+  [role="progressbar"] {
+    background: #e5e7eb !important;
+  }
+
+  /* Dialog overlay should be invisible */
+  [data-radix-dialog-overlay] {
+    display: none !important;
+  }
 }

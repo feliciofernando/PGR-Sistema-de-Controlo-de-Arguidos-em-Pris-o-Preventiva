@@ -7,11 +7,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const arguidoId = searchParams.get('arguidoId');
     const statusEnvio = searchParams.get('statusEnvio');
+    const magistrado = searchParams.get('magistrado');
     const limit = parseInt(searchParams.get('limit') || '50');
 
     let query = supabase
       .from('alertas')
-      .select('*, arguido:arguido_id(numero_id, numero_processo, nome_arguido)')
+      .select('*, arguido:arguido_id(numero_id, numero_processo, nome_arguido, magistrado)')
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -20,6 +21,9 @@ export async function GET(request: NextRequest) {
     }
     if (statusEnvio) {
       query = query.eq('status_envio', statusEnvio);
+    }
+    if (magistrado) {
+      query = query.eq('arguido.magistrado', magistrado);
     }
 
     const { data, error } = await query;

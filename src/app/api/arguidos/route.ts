@@ -1,6 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, toCamelCaseDeep, toSnakeCaseDeep, addMonthsToISO } from '@/lib/supabase';
 
+// Helper: create audit log entry
+async function createAuditLog(params: {
+  arguidoId: number;
+  action: string;
+  fieldChanged?: string | null;
+  oldValue?: string | null;
+  newValue?: string | null;
+  username?: string;
+}) {
+  try {
+    await supabase.from('audit_logs').insert({
+      arguido_id: params.arguidoId,
+      username: params.username || 'sistema',
+      action: params.action,
+      field_changed: params.fieldChanged || null,
+      old_value: params.oldValue || null,
+      new_value: params.newValue || null,
+    });
+  } catch (e) {
+    console.error('[Audit] Failed to write audit log:', e);
+  }
+}
+
+// CamelCase to readable label mapping
+function fieldLabel(field: string): string {
+  const labels: Record<string, string> = {
+    numeroProcesso: 'Nº Processo',
+    nomeArguido: 'Nome do Arguido',
+    nomePai: 'Nome do Pai',
+    nomeMae: 'Nome da Mãe',
+    dataDetencao: 'Data de Detenção',
+    crime: 'Crime',
+    dataRemessaJg: 'Remessa ao JG',
+    dataRegresso: 'Data de Regresso',
+    medidasAplicadas: 'Medidas Aplicadas',
+    dataMedidasAplicadas: 'Data das Medidas',
+    dataRemessaSic: 'Remessa ao SIC',
+    fimPrimeiroPrazo: 'Fim 1º Prazo',
+    dataProrrogacao: 'Data de Prorrogação',
+    duracaoProrrogacao: 'Duração da Prorrogação',
+    fimSegundoPrazo: 'Fim 2º Prazo',
+    magistrado: 'Magistrado',
+    remessaJgAlteracao: 'Remessa JG / Alteração',
+    obs1: 'Observação 1',
+    obs2: 'Observação 2',
+    status: 'Status',
+  };
+  return labels[field] || field;
+}
+
 // GET /api/arguidos - List with search, filter, pagination
 export async function GET(request: NextRequest) {
   try {
@@ -24,6 +74,17 @@ export async function GET(request: NextRequest) {
     if (status) {
       query = query.eq('status', status);
     }
+
+    // Advanced date range filters
+    const detencaoDe = searchParams.get('detencaoDe') || '';
+    const detencaoAte = searchParams.get('detencaoAte') || '';
+    const prazoDe = searchParams.get('prazoDe') || '';
+    const prazoAte = searchParams.get('prazoAte') || '';
+
+    if (detencaoDe) query = query.gte('data_detencao', detencaoDe);
+    if (detencaoAte) query = query.lte('data_detencao', detencaoAte);
+    if (prazoDe) query = query.gte('fim_primeiro_prazo', prazoDe);
+    if (prazoAte) query = query.lte('fim_primeiro_prazo', prazoAte);
 
     // Sort
     query = query.order(sortBy, { ascending: sortOrder === 'asc' });
@@ -134,6 +195,14 @@ export async function POST(request: NextRequest) {
       console.error('Supabase insert error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Audit log: creation
+    await createAuditLog({
+      arguidoId: data.id,
+      action: 'criacao',
+      newValue: `Arguido "${body.nomeArguido}" criado (${numeroId})`,
+      username: body.username || 'sistema',
+    });
 
     return NextResponse.json(toCamelCaseDeep(data), { status: 201 });
   } catch (error) {

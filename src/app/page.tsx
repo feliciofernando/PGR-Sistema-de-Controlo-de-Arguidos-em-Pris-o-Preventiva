@@ -18,6 +18,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   LayoutDashboard,
   UserPlus,
@@ -44,14 +45,24 @@ import {
   Scale,
   Gavel,
   FileDown,
+  Printer,
+  Sun,
+  Moon,
   Shield,
   ArrowRight,
   LogOut,
+  Upload,
+  Paperclip,
+  UserCog,
+  Settings,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend,
 } from "recharts";
+import { ThemeProvider, useTheme } from "next-themes";
 
 // ===================== TYPES =====================
 interface Arguido {
@@ -116,6 +127,51 @@ interface DashboardStats {
   magistrados: Array<{ magistrado: string; _count: { magistrado: number } }>;
   monthlyCounts: Record<string, number>;
   statusCounts: Array<{ status: string; _count: { status: number } }>;
+  filteredArguidos?: Arguido[];
+}
+
+interface DocumentItem {
+  id: number;
+  arguidoId: number;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  fileType: string;
+  category: string;
+  description: string;
+  url: string;
+  createdAt: string;
+}
+
+interface SystemUser {
+  id: number;
+  username: string;
+  nome: string;
+  role: string;
+  ativo: boolean;
+  createdAt: string;
+  ultimoLogin: string | null;
+}
+
+type RoleType = 'admin' | 'operador' | 'magistrado' | 'consultor';
+
+// ===================== PERMISSION HELPER =====================
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  admin: ['create', 'edit', 'delete', 'export', 'view_all', 'view_own', 'manage_users', 'import'],
+  operador: ['create', 'edit', 'delete', 'export', 'view_all', 'import'],
+  magistrado: ['create', 'edit', 'view_own', 'export'],
+  consultor: ['view_all', 'export'],
+};
+
+function canPerform(userRole: string, action: string): boolean {
+  const perms = ROLE_PERMISSIONS[userRole] || [];
+  return perms.includes(action);
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
 const CRIMES_LIST = [
@@ -589,6 +645,30 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
 }
 
 // ===================== MAIN PAGE =====================
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
+  if (!mounted) return <div className="h-5 w-5" />;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 rounded-full text-pgr-text-muted hover:bg-stone-100 hover:text-stone-900 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        >
+          {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="text-sm">{theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function AppContent({ authUser, onLogout }: { authUser: { username: string; nome: string; role: string } | null; onLogout: () => void }) {
   const { toast } = useToast();
 
@@ -622,21 +702,51 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
   const [viewDetailLoading, setViewDetailLoading] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<number | null>(null);
 
+  // Form validation state
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+
   // Table state
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCrime, setFilterCrime] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterPrazo, setFilterPrazo] = useState("");
+  const [detencaoDe, setDetencaoDe] = useState("");
+  const [detencaoAte, setDetencaoAte] = useState("");
+  const [prazoDe, setPrazoDe] = useState("");
+  const [prazoAte, setPrazoAte] = useState("");
   const [totalRecords, setTotalRecords] = useState(0);
   const pageSize = 500;
+
+  // Document state
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [deleteDocDialog, setDeleteDocDialog] = useState<number | null>(null);
+
+  // Report filter state
+  const [reportFilters, setReportFilters] = useState({
+    startDate: '',
+    endDate: '',
+    crime: '',
+    status: '',
+    magistrado: '',
+  });
+  const [reportStats, setReportStats] = useState<DashboardStats | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Fetch data - using refs to avoid lint issues with setState in effects
   const loadInitialData = async () => {
     setLoading(true);
     try {
+      const magistradoParam = authUser?.role === 'magistrado' ? `?magistrado=${encodeURIComponent(authUser.nome)}` : '';
+      const alertasUrl = authUser?.role === 'magistrado'
+        ? `/api/alertas?limit=100&magistrado=${encodeURIComponent(authUser.nome)}`
+        : '/api/alertas?limit=100';
       const [statsRes, alertasRes] = await Promise.all([
-        fetch("/api/stats"),
-        fetch("/api/alertas?limit=100"),
+        fetch(`/api/stats${magistradoParam}`),
+        fetch(alertasUrl),
       ]);
       if (statsRes.ok) {
         setStats(await statsRes.json());
@@ -666,6 +776,13 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         page: '1',
         pageSize: pageSize.toString(),
       });
+      if (authUser?.role === 'magistrado') {
+        params.set('magistrado', authUser.nome);
+      }
+      if (detencaoDe) params.set('detencaoDe', detencaoDe);
+      if (detencaoAte) params.set('detencaoAte', detencaoAte);
+      if (prazoDe) params.set('prazoDe', prazoDe);
+      if (prazoAte) params.set('prazoAte', prazoAte);
       const res = await fetch(`/api/arguidos?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -676,9 +793,10 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     setLoading(false);
   };
 
-  const loadStats = async () => {
+  const loadStats = async (extraParams?: string) => {
     try {
-      const res = await fetch("/api/stats");
+      const magistradoParam = authUser?.role === 'magistrado' ? `?magistrado=${encodeURIComponent(authUser.nome)}` : '';
+      const res = await fetch(`/api/stats${magistradoParam}${extraParams || ''}`);
       if (res.ok) setStats(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -695,7 +813,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     // Check URL params for view
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['dashboard', 'cadastro', 'gestao', 'alertas', 'relatorios'].includes(view)) {
+    if (view && ['dashboard', 'cadastro', 'gestao', 'alertas', 'relatorios', 'sistema'].includes(view)) {
       setActiveView(view);
     }
   }, []);
@@ -730,7 +848,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
   useEffect(() => {
     if (activeView === "gestao") loadArguidos();
-  }, [activeView, searchTerm, filterCrime, filterStatus, filterPrazo]);
+  }, [activeView, searchTerm, filterCrime, filterStatus, filterPrazo, detencaoDe, detencaoAte, prazoDe, prazoAte]);
 
   // Register Service Worker
   const registerServiceWorker = async (): Promise<boolean> => {
@@ -1116,6 +1234,8 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     setFormData(emptyArguido);
     setEditingId(null);
     setFormMode("create");
+    setFormErrors({});
+    setDuplicateWarning(null);
     setFormOpen(true);
   };
 
@@ -1144,14 +1264,96 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     });
     setEditingId(arguido.id);
     setFormMode("edit");
+    setFormErrors({});
+    setDuplicateWarning(null);
     setFormOpen(true);
   };
 
-  const handleSubmitForm = async () => {
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
     if (!formData.nomeArguido.trim()) {
-      toast({ title: "Erro", description: "Nome do arguido é obrigatório.", variant: "destructive" });
+      errors.nomeArguido = "Nome do arguido é obrigatório.";
+    }
+    if (!formData.numeroProcesso.trim()) {
+      errors.numeroProcesso = "Nº do processo é obrigatório.";
+    }
+    if (!formData.crime.trim()) {
+      errors.crime = "Crime é obrigatório.";
+    }
+
+    // Date logic: dataProrrogacao must be after dataMedidasAplicadas
+    if (formData.dataProrrogacao && formData.dataMedidasAplicadas) {
+      const prorro = new Date(formData.dataProrrogacao);
+      const medidas = new Date(formData.dataMedidasAplicadas);
+      if (prorro <= medidas) {
+        errors.dataProrrogacao = "Data de prorrogação deve ser posterior à data das medidas aplicadas.";
+      }
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const checkDuplicates = async (): Promise<boolean> => {
+    if (!formData.nomeArguido.trim() || formMode === "edit") return false;
+
+    setCheckingDuplicates(true);
+    setDuplicateWarning(null);
+
+    try {
+      const res = await fetch(`/api/arguidos?search=${encodeURIComponent(formData.nomeArguido.trim())}&pageSize=10`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+          const exactMatch = data.data.find(
+            (a: Arguido) =>
+              a.nomeArguido.toLowerCase().trim() === formData.nomeArguido.toLowerCase().trim() &&
+              a.numeroProcesso === formData.numeroProcesso
+          );
+          if (exactMatch) {
+            setDuplicateWarning(`Já existe um arguido com o nome "${exactMatch.nomeArguido}" e Nº Processo "${exactMatch.numeroProcesso}" (ID: ${exactMatch.numeroId}).`);
+            return true;
+          }
+          // Similar name check
+          const similar = data.data.filter(
+            (a: Arguido) =>
+              a.nomeArguido.toLowerCase().includes(formData.nomeArguido.toLowerCase().trim()) ||
+              formData.nomeArguido.toLowerCase().trim().includes(a.nomeArguido.toLowerCase())
+          );
+          if (similar.length > 0) {
+            setDuplicateWarning(
+              `Encontrado(s) ${similar.length} registo(s) com nome semelhante: ${similar.map((a: Arguido) => `${a.nomeArguido} (${a.numeroId})`).join(', ')}`
+            );
+            return false; // Warning only, not blocking
+          }
+        }
+      }
+    } catch {
+      // Non-blocking
+    } finally {
+      setCheckingDuplicates(false);
+    }
+    return false;
+  };
+
+  const handleSubmitForm = async () => {
+    setDuplicateWarning(null);
+
+    if (!validateForm()) {
+      toast({ title: "Erro de validação", description: "Preencha todos os campos obrigatórios.", variant: "destructive" });
       return;
     }
+
+    // Check duplicates on create
+    if (formMode === "create") {
+      const isDuplicate = await checkDuplicates();
+      if (isDuplicate) {
+        toast({ title: "Possível duplicado", description: "Já existe um registo com o mesmo nome e nº de processo.", variant: "destructive" });
+        return;
+      }
+    }
+
     try {
       const editId = formMode === "edit" ? (editingId || viewDetail?.id) : undefined;
       const finalUrl = formMode === "create" ? "/api/arguidos" : `/api/arguidos/${editId}`;
@@ -1166,6 +1368,8 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         setFormOpen(false);
         setEditingId(null);
         setViewDetail(null);
+        setFormErrors({});
+        setDuplicateWarning(null);
         loadStats();
         loadArguidos();
         loadAlertas();
@@ -1204,6 +1408,9 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       if (res.ok) {
         const fullArguido = await res.json();
         setViewDetail(fullArguido);
+        // Load documents for this arguido
+        const docsRes = await fetch(`/api/documents?arguido_id=${id}`);
+        if (docsRes.ok) setDocuments(await docsRes.json());
       } else {
         toast({ title: "Erro", description: "Falha ao carregar detalhes.", variant: "destructive" });
       }
@@ -1213,6 +1420,133 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     } finally {
       setViewDetailLoading(false);
     }
+  };
+
+  // Upload document handler
+  const handleUploadDocument = async (arguidoId: number, file: File, description: string, category: string) => {
+    setDocsLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('arguido_id', String(arguidoId));
+      fd.append('file', file);
+      fd.append('description', description);
+      fd.append('category', category);
+      const res = await fetch('/api/documents', { method: 'POST', body: fd });
+      if (res.ok) {
+        toast({ title: "Documento enviado!", description: file.name });
+        const docsRes = await fetch(`/api/documents?arguido_id=${arguidoId}`);
+        if (docsRes.ok) setDocuments(await docsRes.json());
+      } else {
+        const err = await res.json();
+        toast({ title: "Erro", description: err.error || "Falha ao enviar documento.", variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Erro", description: "Erro de conexão.", variant: "destructive" });
+    } finally {
+      setDocsLoading(false);
+      setUploadDialogOpen(false);
+    }
+  };
+
+  // Delete document handler
+  const handleDeleteDocument = async (docId: number) => {
+    try {
+      const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast({ title: "Documento eliminado." });
+        setDeleteDocDialog(null);
+        if (viewDetail) {
+          const docsRes = await fetch(`/api/documents?arguido_id=${viewDetail.id}`);
+          if (docsRes.ok) setDocuments(await docsRes.json());
+        }
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  // Report export PDF handler
+  const handleExportReportPdf = async () => {
+    const data = reportStats || stats;
+    if (!data || !data.filteredArguidos || data.filteredArguidos.length === 0) {
+      toast({ title: "Sem dados", description: "Nenhum arguido para exportar.", variant: "destructive" });
+      return;
+    }
+    try {
+      toast({ title: "A gerar PDF do relatório..." });
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 10;
+
+      doc.setFillColor(194, 65, 12);
+      doc.rect(0, 0, pageW, 18, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("PGR ANGOLA — RELATÓRIO FILTRADO", margin + 2, 9);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Gerado em: ${new Date().toLocaleString("pt-AO")} | Total: ${data.filteredArguidos.length}`, margin + 2, 14);
+
+      const headers = [["ID", "Nº Processo", "Nome", "Crime", "Magistrado", "Medidas", "Detenção", "1º Prazo", "Status"]];
+      const rows = data.filteredArguidos.map((a) => [
+        a.numeroId, a.numeroProcesso, a.nomeArguido || "—", a.crime || "—",
+        a.magistrado || "—", a.medidasAplicadas || "—", formatDate(a.dataDetencao),
+        formatDate(a.fimPrimeiroPrazo), a.status.charAt(0).toUpperCase() + a.status.slice(1),
+      ]);
+
+      autoTable(doc, {
+        startY: 21,
+        head: headers,
+        body: rows,
+        theme: "grid",
+        styles: { fontSize: 8, cellPadding: 2.5, lineColor: [210, 210, 210] },
+        headStyles: { fillColor: [60, 60, 60], textColor: 255, fontStyle: "bold", halign: "center" },
+        alternateRowStyles: { fillColor: [248, 248, 248] },
+        margin: { left: margin, right: margin, top: 21, bottom: 15 },
+      });
+
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFillColor(240, 240, 240);
+        doc.rect(0, pageH - 8, pageW, 8, "F");
+        doc.setFontSize(6.5);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`PGR Angola © ${new Date().getFullYear()} — Relatório Filtrado`, margin, pageH - 3.5);
+        doc.text(`Página ${i} de ${pageCount}`, pageW - margin, pageH - 3.5, { align: "right" });
+      }
+
+      doc.save(`Relatorio_PGR_${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast({ title: "Relatório exportado!" });
+    } catch (err) {
+      console.error("Report PDF error:", err);
+      toast({ title: "Erro", description: "Falha ao gerar PDF.", variant: "destructive" });
+    }
+  };
+
+  // Load report stats with filters (POST to advanced endpoint)
+  const loadReportStats = async () => {
+    setReportLoading(true);
+    try {
+      const body: Record<string, string> = {};
+      if (reportFilters.startDate) body.dateFrom = reportFilters.startDate;
+      if (reportFilters.endDate) body.dateTo = reportFilters.endDate;
+      if (reportFilters.crime) body.crime = reportFilters.crime;
+      if (reportFilters.status) body.status = reportFilters.status;
+      if (reportFilters.magistrado) body.magistrado = reportFilters.magistrado;
+      const res = await fetch('/api/relatorios/advanced', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReportStats(data);
+      }
+    } catch (e) { console.error(e); }
+    setReportLoading(false);
   };
 
   const handleDownloadPdf = async (arguido: Arguido) => {
@@ -1570,24 +1904,130 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     }
   };
 
-  // Navigation items
+  const handleExportSelectedPDF = async (selectedArguidos: Arguido[]) => {
+    if (selectedArguidos.length === 0) {
+      toast({ title: "Sem seleção", description: "Nenhum arguido selecionado.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      toast({ title: "A gerar PDF...", description: `${selectedArguidos.length} arguidos selecionados` });
+
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 10;
+
+      doc.setFillColor(194, 65, 12);
+      doc.rect(0, 0, pageW, 18, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("PGR ANGOLA", margin + 2, 9);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text("Sistema de Controlo de Arguidos em Prisão Preventiva — Selecionados", margin + 2, 14);
+
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 255, 255, 0.7);
+      doc.text(`Exportado em: ${new Date().toLocaleString("pt-AO")}`, pageW - margin - 2, 9, { align: "right" });
+      doc.text(`Selecionados: ${selectedArguidos.length}`, pageW - margin - 2, 14, { align: "right" });
+
+      const headers = [
+        ["ID", "Nº Processo", "Nome do Arguido", "Nome do Pai", "Nome da Mãe", "Crime", "Magistrado", "Medidas", "Detenção", "1º Prazo", "Prazo", "2º Prazo", "Prazo", "Status"],
+      ];
+
+      const rows = selectedArguidos.map(a => {
+        const days1 = getDaysRemaining(a.fimPrimeiroPrazo);
+        const days2 = getDaysRemaining(a.fimSegundoPrazo);
+        return [
+          a.numeroId,
+          a.numeroProcesso,
+          a.nomeArguido || "—",
+          a.nomePai || "—",
+          a.nomeMae || "—",
+          a.crime || "—",
+          a.magistrado || "—",
+          a.medidasAplicadas || "—",
+          formatDate(a.dataDetencao),
+          formatDate(a.fimPrimeiroPrazo),
+          days1 !== null ? getDeadlineLabel(days1) : "—",
+          formatDate(a.fimSegundoPrazo),
+          days2 !== null ? getDeadlineLabel(days2) : "—",
+          a.status.charAt(0).toUpperCase() + a.status.slice(1),
+        ];
+      });
+
+      autoTable(doc, {
+        startY: 21,
+        head: headers,
+        body: rows,
+        theme: "grid",
+        styles: { fontSize: 7.5, cellPadding: 2.5, lineColor: [210, 210, 210], lineWidth: 0.3, textColor: [40, 40, 40], font: "helvetica", overflow: "linebreak" },
+        headStyles: { fillColor: [60, 60, 60], textColor: 255, fontStyle: "bold", fontSize: 7.5, halign: "center", valign: "middle", cellPadding: 3 },
+        alternateRowStyles: { fillColor: [248, 248, 248] },
+        columnStyles: {
+          0: { cellWidth: 18, halign: "center" },
+          1: { cellWidth: 28 },
+          2: { cellWidth: 38 },
+          3: { cellWidth: 30 },
+          4: { cellWidth: 30 },
+          5: { cellWidth: 28 },
+          6: { cellWidth: 25 },
+          7: { cellWidth: 26 },
+          8: { cellWidth: 20, halign: "center" },
+          9: { cellWidth: 20, halign: "center" },
+          10: { cellWidth: 24, halign: "center" },
+          11: { cellWidth: 20, halign: "center" },
+          12: { cellWidth: 24, halign: "center" },
+          13: { cellWidth: 17, halign: "center" },
+        },
+        margin: { left: margin, right: margin, top: 21, bottom: 15 },
+      });
+
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFillColor(240, 240, 240);
+        doc.rect(0, pageH - 8, pageW, 8, "F");
+        doc.setFontSize(6.5);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`PGR Angola © ${new Date().getFullYear()} — Sistema de Controlo de Arguidos em Prisão Preventiva`, margin, pageH - 3.5);
+        doc.text(`Página ${i} de ${pageCount}`, pageW - margin, pageH - 3.5, { align: "right" });
+      }
+
+      doc.save(`Arguidos_Selecionados_PGR_${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast({ title: "PDF exportado!", description: `${selectedArguidos.length} arguidos em ${pageCount} página${pageCount !== 1 ? "s" : ""}` });
+    } catch (err) {
+      console.error("PDF export error:", err);
+      toast({ title: "Erro", description: "Falha ao gerar PDF.", variant: "destructive" });
+    }
+  };
+
+  // Navigation items — filtered by permissions
   const navItems = [
     { id: "dashboard", label: "Painel", icon: LayoutDashboard },
-    { id: "cadastro", label: "Cadastro", icon: UserPlus },
+    ...(canPerform(authUser?.role || '', 'create') ? [{ id: "cadastro", label: "Cadastro", icon: UserPlus }] : []),
     { id: "gestao", label: "Gestão", icon: Users },
     { id: "consultar", label: "Consultar", icon: Search },
     { id: "alertas", label: "Alertas", icon: Bell },
     { id: "relatorios", label: "Relatórios", icon: BarChart3 },
+    ...(canPerform(authUser?.role || '', 'manage_users') ? [{ id: "utilizadores", label: "Utilizadores", icon: UserCog }] : []),
+    ...(authUser?.role === 'admin' ? [{ id: "sistema", label: "Sistema", icon: Shield }] : []),
   ];
 
   const urgentCount = stats?.prazosCriticos || 0;
 
   // ===================== RENDER =====================
   return (
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
     <TooltipProvider>
       <div className="min-h-screen flex flex-col">
         {/* HEADER + NAVBAR */}
-        <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-stone-200/80 shadow-sm">
+        <header className="sticky top-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-stone-200/80 dark:border-gray-800 shadow-sm">
           <nav className="flex items-center">
             {/* Desktop Nav */}
             <div className="hidden md:flex items-center justify-center gap-2 flex-1 px-4 py-2">
@@ -1600,8 +2040,8 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                     onClick={() => setActiveView(item.id)}
                     className={`relative flex items-center gap-2.5 px-5 py-2.5 text-[15px] font-semibold rounded-lg transition-all duration-200
                       ${isActive
-                        ? "bg-stone-900 text-white shadow-md"
-                        : "text-stone-500 hover:text-stone-800 hover:bg-stone-100/80"
+                        ? "bg-stone-900 text-white shadow-md dark:bg-orange-600 dark:hover:bg-orange-700"
+                        : "text-stone-500 hover:text-stone-800 hover:bg-stone-100/80 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800"
                       }`}
                   >
                     <Icon className="h-[18px] w-[18px]" />
@@ -1619,13 +2059,16 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
             {/* Right side icons — desktop */}
             <div className="hidden md:flex items-center gap-1 pr-3">
+              {/* Theme toggle */}
+              <ThemeToggle />
+
               {/* Bell icon */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className={`relative h-10 w-10 rounded-full transition-colors ${pushSubscribed ? 'text-green-600 hover:bg-green-500/10' : 'text-pgr-text-muted hover:bg-stone-100 hover:text-stone-900'}`}
+                    className={`relative h-10 w-10 rounded-full transition-colors ${pushSubscribed ? 'text-green-600 hover:bg-green-500/10' : 'text-pgr-text-muted hover:bg-stone-100 dark:hover:bg-gray-800 hover:text-stone-900 dark:hover:text-gray-200'}`}
                     onClick={pushSubscribed ? handleUnsubscribePush : handleSubscribePush}
                   >
                     <Bell className="h-5 w-5" />
@@ -1640,12 +2083,12 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
               </Tooltip>
 
               {/* Divider */}
-              <div className="w-px h-6 bg-stone-200 mx-1" />
+              <div className="w-px h-6 bg-stone-200 dark:bg-gray-700 mx-1" />
 
               {/* User info + Sair button */}
               <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <p className="text-xs font-semibold text-pgr-text leading-tight">{authUser?.nome || authUser?.username}</p>
+                  <p className="text-xs font-semibold text-pgr-text dark:text-gray-100 leading-tight">{authUser?.nome || authUser?.username}</p>
                   <p className="text-[10px] text-pgr-text-muted leading-tight">{authUser?.role || 'Operador'}</p>
                 </div>
                 <Tooltip>
@@ -1653,7 +2096,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-10 w-10 rounded-full text-pgr-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
+                      className="h-10 w-10 rounded-full text-pgr-text-muted hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-colors"
                       onClick={onLogout}
                     >
                       <LogOut className="h-5 w-5" />
@@ -1678,7 +2121,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                     className={`relative flex flex-col items-center justify-center gap-1 min-w-[64px] flex-1 py-3 border-b-[3px] transition-colors
                       ${isActive
                         ? "text-pgr-primary border-pgr-primary"
-                        : "text-pgr-text border-transparent hover:bg-stone-100"
+                        : "text-pgr-text dark:text-gray-400 border-transparent hover:bg-stone-100 dark:hover:bg-gray-800"
                       }`}
                   >
                     <div className="relative">
@@ -1696,8 +2139,9 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
               {/* Bell + Sair icons at the end of mobile nav */}
               <div className="flex items-center gap-1 pr-1 py-2 flex-shrink-0">
+                <ThemeToggle />
                 <button
-                  className={`relative h-10 w-10 flex items-center justify-center rounded-full transition-colors ${pushSubscribed ? 'text-green-600 bg-green-500/10' : 'text-pgr-text-muted bg-stone-50'}`}
+                  className={`relative h-10 w-10 flex items-center justify-center rounded-full transition-colors ${pushSubscribed ? 'text-green-600 bg-green-500/10' : 'text-pgr-text-muted bg-stone-50 dark:bg-gray-800'}`}
                   onClick={pushSubscribed ? handleUnsubscribePush : handleSubscribePush}
                 >
                   <Bell className="h-5 w-5" />
@@ -1708,7 +2152,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      className="relative h-10 w-10 flex items-center justify-center rounded-full text-pgr-text-muted bg-stone-50 hover:bg-red-50 hover:text-red-600 transition-colors"
+                      className="relative h-10 w-10 flex items-center justify-center rounded-full text-pgr-text-muted bg-stone-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-colors"
                       onClick={onLogout}
                     >
                       <LogOut className="h-5 w-5" />
@@ -1724,7 +2168,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         </header>
 
         {/* MAIN CONTENT */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto dark:bg-gray-950">
             <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
               {/* ============ DASHBOARD VIEW ============ */}
               {activeView === "dashboard" && (
@@ -1733,11 +2177,12 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   loading={loading}
                   onNavigate={setActiveView}
                   onViewDetail={(id) => fetchAndShowDetail(id)}
+                  authUser={authUser}
                 />
               )}
 
               {/* ============ CADASTRO VIEW ============ */}
-              {activeView === "cadastro" && (
+              {activeView === "cadastro" && canPerform(authUser?.role || '', 'create') && (
                 <CadastroView
                   formData={formData}
                   setFormData={setFormData}
@@ -1782,14 +2227,28 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   setFilterStatus={setFilterStatus}
                   filterPrazo={filterPrazo}
                   setFilterPrazo={setFilterPrazo}
+                  detencaoDe={detencaoDe}
+                  setDetencaoDe={setDetencaoDe}
+                  detencaoAte={detencaoAte}
+                  setDetencaoAte={setDetencaoAte}
+                  prazoDe={prazoDe}
+                  setPrazoDe={setPrazoDe}
+                  prazoAte={prazoAte}
+                  setPrazoAte={setPrazoAte}
                   totalRecords={totalRecords}
-                  onEdit={handleOpenEdit}
-                  onDelete={(id) => setDeleteDialog(id)}
+                  onEdit={canPerform(authUser?.role || '', 'edit') ? handleOpenEdit : () => {}}
+                  onDelete={canPerform(authUser?.role || '', 'delete') ? (id) => setDeleteDialog(id) : () => {}}
                   onView={(a) => fetchAndShowDetail(a.id)}
                   onPdf={handleDownloadPdf}
                   onRefresh={loadArguidos}
-                  onExport={handleExportPDF}
-                  onNew={handleOpenCreate}
+                  onExport={canPerform(authUser?.role || '', 'export') ? handleExportPDF : () => {}}
+                  onExportSelected={canPerform(authUser?.role || '', 'export') ? handleExportSelectedPDF : () => {}}
+                  onNew={canPerform(authUser?.role || '', 'create') ? handleOpenCreate : () => {}}
+                  canCreate={canPerform(authUser?.role || '', 'create')}
+                  canEdit={canPerform(authUser?.role || '', 'edit')}
+                  canDelete={canPerform(authUser?.role || '', 'delete')}
+                  canExport={canPerform(authUser?.role || '', 'export')}
+                  canImport={canPerform(authUser?.role || '', 'import')}
                 />
               )}
 
@@ -1811,13 +2270,23 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
               {/* ============ RELATÓRIOS VIEW ============ */}
               {activeView === "relatorios" && (
-                <RelatoriosView stats={stats} />
+                <RelatoriosView stats={reportStats || stats} reportFilters={reportFilters} setReportFilters={setReportFilters} onApplyFilters={loadReportStats} reportLoading={reportLoading} onExportPdf={handleExportReportPdf} canExport={canPerform(authUser?.role || '', 'export')} />
+              )}
+
+              {/* ============ UTILIZADORES VIEW ============ */}
+              {activeView === "utilizadores" && canPerform(authUser?.role || '', 'manage_users') && (
+                <UtilizadoresView />
+              )}
+
+              {/* ============ SISTEMA VIEW (admin only) ============ */}
+              {activeView === "sistema" && authUser?.role === 'admin' && (
+                <SistemaView stats={stats} />
               )}
             </div>
           </main>
 
         {/* FOOTER */}
-        <footer className="bg-stone-200 text-pgr-text-muted border-t border-stone-200 py-3 px-4 text-center text-xs mt-auto">
+        <footer className="bg-stone-200 dark:bg-gray-900 text-pgr-text-muted dark:text-gray-400 border-t border-stone-200 dark:border-gray-800 py-3 px-4 text-center text-xs mt-auto">
           <div className="flex items-center justify-center gap-2">
             <Gavel className="h-3 w-3" />
             <span>© 2024 Procuradoria-Geral da República de Angola — Sistema de Controlo de Arguidos em Prisão Preventiva</span>
@@ -1825,7 +2294,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
           {!pushSubscribed && notificationPermission !== 'denied' && (
             <button
               onClick={handleSubscribePush}
-              className="mt-2 inline-flex items-center gap-1.5 text-pgr-text-secondary hover:text-pgr-text transition-colors underline underline-offset-2 decoration-stone-300 hover:decoration-pgr-text"
+              className="mt-2 inline-flex items-center gap-1.5 text-pgr-text-secondary dark:text-gray-400 hover:text-pgr-text dark:hover:text-gray-200 transition-colors underline underline-offset-2 decoration-stone-300 dark:decoration-gray-600 hover:decoration-pgr-text"
             >
               <span>🔔</span> Ativar alertas no dispositivo
             </button>
@@ -1834,7 +2303,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
         {/* ============ FORM DIALOG ============ */}
         <Dialog open={formOpen} onOpenChange={setFormOpen}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto border-stone-200 text-pgr-text">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto border-stone-200 dark:border-gray-800 text-pgr-text dark:text-gray-100">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <UserPlus className="h-5 w-5 text-pgr-primary" />
@@ -1846,11 +2315,25 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   : "Atualize os dados do arguido."}
               </DialogDescription>
             </DialogHeader>
-            <FormFields formData={formData} setFormData={setFormData} />
+            <FormFields formData={formData} setFormData={setFormData} formErrors={formErrors} />
+            {duplicateWarning && (
+              <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm rounded-lg px-4 py-3 mt-2 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Aviso de possível duplicado</p>
+                  <p className="text-xs mt-0.5">{duplicateWarning}</p>
+                </div>
+              </div>
+            )}
             <DialogFooter>
-              <Button variant="outline" className="bg-stone-100 text-pgr-text-muted hover:text-stone-900 border-stone-200" onClick={() => setFormOpen(false)}>Cancelar</Button>
-              <Button className="bg-pgr-primary text-white font-bold hover:opacity-90" onClick={handleSubmitForm}>
-                {formMode === "create" ? "Cadastrar" : "Salvar Alterações"}
+              <Button variant="outline" className="bg-stone-100 dark:bg-gray-800 text-pgr-text-muted dark:text-gray-400 hover:text-stone-900 dark:hover:text-gray-100 border-stone-200 dark:border-gray-700" onClick={() => setFormOpen(false)}>Cancelar</Button>
+              <Button className="bg-pgr-primary text-white font-bold hover:opacity-90" onClick={handleSubmitForm} disabled={checkingDuplicates}>
+                {checkingDuplicates ? (
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    A verificar duplicados...
+                  </span>
+                ) : formMode === "create" ? "Cadastrar" : "Salvar Alterações"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1858,7 +2341,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
         {/* ============ VIEW DETAIL DIALOG ============ */}
         <Dialog open={!!viewDetail || viewDetailLoading} onOpenChange={() => { if (!viewDetailLoading) setViewDetail(null); }}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto border-stone-200 text-pgr-text">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto border-stone-200 dark:border-gray-800 text-pgr-text dark:text-gray-100">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Eye className="h-5 w-5 text-pgr-primary" />
@@ -1873,9 +2356,12 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
               </div>
             ) : viewDetail && <DetailView arguido={viewDetail} />}
             <DialogFooter className="gap-2">
-              <Button variant="outline" className="bg-stone-100 text-pgr-text-muted hover:text-stone-900 border-stone-200" onClick={() => setViewDetail(null)}>Fechar</Button>
-              <Button variant="outline" className="text-pgr-primary border-pgr-primary hover:bg-orange-50 bg-stone-100" onClick={() => { if (viewDetail) handleDownloadPdf(viewDetail); }}>
+              <Button variant="outline" className="bg-stone-100 dark:bg-gray-800 text-pgr-text-muted dark:text-gray-400 hover:text-stone-900 dark:hover:text-gray-100 border-stone-200 dark:border-gray-700" onClick={() => setViewDetail(null)}>Fechar</Button>
+              <Button variant="outline" className="text-pgr-primary border-pgr-primary hover:bg-orange-50 dark:hover:bg-orange-900/20 bg-stone-100 dark:bg-gray-800" onClick={() => { if (viewDetail) handleDownloadPdf(viewDetail); }}>
                 <FileDown className="h-4 w-4 mr-1" /> PDF
+              </Button>
+              <Button variant="outline" className="bg-stone-100 dark:bg-gray-800 text-pgr-text-muted dark:text-gray-400 hover:text-stone-900 dark:hover:text-gray-100 border-stone-200 dark:border-gray-700" onClick={() => window.print()}>
+                <Printer className="h-4 w-4 mr-1" /> Imprimir
               </Button>
               <Button variant="destructive" onClick={() => { if (viewDetail) setDeleteDialog(viewDetail.id); }}>
                 <Trash2 className="h-4 w-4 mr-1" /> Eliminar
@@ -1889,7 +2375,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
         {/* ============ DELETE CONFIRMATION ============ */}
         <AlertDialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>
-          <AlertDialogContent className="border-stone-200 text-pgr-text">
+          <AlertDialogContent className="border-stone-200 dark:border-gray-800 text-pgr-text dark:text-gray-100">
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-red-500" />
@@ -2011,7 +2497,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 {/* Total */}
                 <div className="flex items-center justify-between px-1">
                   <p className="text-xs font-medium text-pgr-text-muted">Total de Casos</p>
-                  <p className="text-sm font-bold text-pgr-text">{inAppNotification.total}</p>
+                  <p className="text-sm font-bold text-pgr-text dark:text-gray-100">{inAppNotification.total}</p>
                 </div>
               </div>
 
@@ -2055,13 +2541,15 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         )}
       </div>
     </TooltipProvider>
+    </ThemeProvider>
   );
 }
 
 // ===================== FORM FIELDS COMPONENT =====================
-function FormFields({ formData, setFormData }: {
+function FormFields({ formData, setFormData, formErrors }: {
   formData: Omit<Arguido, "id" | "numeroId" | "createdAt" | "updatedAt">;
   setFormData: React.Dispatch<React.SetStateAction<Omit<Arguido, "id" | "numeroId" | "createdAt" | "updatedAt">>>;
+  formErrors?: Record<string, string>;
 }) {
   const update = (field: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -2071,58 +2559,61 @@ function FormFields({ formData, setFormData }: {
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
       {/* Personal Info */}
       <div className="md:col-span-2">
-        <h4 className="text-sm font-semibold text-pgr-text mb-3 flex items-center gap-2">
+        <h4 className="text-sm font-semibold text-pgr-text dark:text-gray-100 mb-3 flex items-center gap-2">
           <FileText className="h-4 w-4" /> Dados Pessoais e Processuais
         </h4>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="numeroProcesso" className="text-pgr-text">Nº Processo *</Label>
-        <Input id="numeroProcesso" value={formData.numeroProcesso} onChange={e => update("numeroProcesso", e.target.value)} placeholder="Ex: PGR-2024-001" className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="numeroProcesso" className="text-pgr-text dark:text-gray-100">Nº Processo *</Label>
+        <Input id="numeroProcesso" value={formData.numeroProcesso} onChange={e => update("numeroProcesso", e.target.value)} placeholder="Ex: PGR-2024-001" className={`bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary ${formErrors?.numeroProcesso ? 'border-red-400 focus:border-red-500' : ''}`} />
+        {formErrors?.numeroProcesso && <p className="text-xs text-red-500">{formErrors.numeroProcesso}</p>}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="nomeArguido" className="text-pgr-text">Nome do Arguido *</Label>
-        <Input id="nomeArguido" value={formData.nomeArguido} onChange={e => update("nomeArguido", e.target.value)} placeholder="Nome completo" className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="nomeArguido" className="text-pgr-text dark:text-gray-100">Nome do Arguido *</Label>
+        <Input id="nomeArguido" value={formData.nomeArguido} onChange={e => update("nomeArguido", e.target.value)} placeholder="Nome completo" className={`bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary ${formErrors?.nomeArguido ? 'border-red-400 focus:border-red-500' : ''}`} />
+        {formErrors?.nomeArguido && <p className="text-xs text-red-500">{formErrors.nomeArguido}</p>}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="nomePai" className="text-pgr-text">Nome do Pai</Label>
-        <Input id="nomePai" value={formData.nomePai} onChange={e => update("nomePai", e.target.value)} placeholder="Nome do pai" className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="nomePai" className="text-pgr-text dark:text-gray-100">Nome do Pai</Label>
+        <Input id="nomePai" value={formData.nomePai} onChange={e => update("nomePai", e.target.value)} placeholder="Nome do pai" className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="nomeMae" className="text-pgr-text">Nome da Mãe</Label>
-        <Input id="nomeMae" value={formData.nomeMae} onChange={e => update("nomeMae", e.target.value)} placeholder="Nome da mãe" className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="nomeMae" className="text-pgr-text dark:text-gray-100">Nome da Mãe</Label>
+        <Input id="nomeMae" value={formData.nomeMae} onChange={e => update("nomeMae", e.target.value)} placeholder="Nome da mãe" className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="dataDetencao" className="text-pgr-text">Data de Detenção</Label>
-        <Input id="dataDetencao" type="date" value={formData.dataDetencao ? formData.dataDetencao.slice(0, 10) : ""} onChange={e => update("dataDetencao", e.target.value || null)} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="dataDetencao" className="text-pgr-text dark:text-gray-100">Data de Detenção</Label>
+        <Input id="dataDetencao" type="date" value={formData.dataDetencao ? formData.dataDetencao.slice(0, 10) : ""} onChange={e => update("dataDetencao", e.target.value || null)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="crime" className="text-pgr-text">Crime</Label>
+        <Label htmlFor="crime" className="text-pgr-text dark:text-gray-100">Crime *</Label>
         <Select value={formData.crime} onValueChange={v => update("crime", v)}>
-          <SelectTrigger className="bg-stone-100 text-pgr-text border-stone-200"><SelectValue placeholder="Selecionar crime" /></SelectTrigger>
+          <SelectTrigger className={`bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 ${formErrors?.crime ? 'border-red-400' : ''}`}><SelectValue placeholder="Selecionar crime" /></SelectTrigger>
           <SelectContent>
             {CRIMES_LIST.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Input placeholder="Ou digite outro..." value={formData.crime && !CRIMES_LIST.includes(formData.crime) ? formData.crime : ""} onChange={e => update("crime", e.target.value)} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Input placeholder="Ou digite outro..." value={formData.crime && !CRIMES_LIST.includes(formData.crime) ? formData.crime : ""} onChange={e => update("crime", e.target.value)} className={`bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary ${formErrors?.crime ? 'border-red-400 focus:border-red-500' : ''}`} />
+        {formErrors?.crime && <p className="text-xs text-red-500">{formErrors.crime}</p>}
       </div>
 
       {/* Dates */}
       <div className="md:col-span-2 mt-2">
-        <h4 className="text-sm font-semibold text-pgr-text mb-3 flex items-center gap-2">
+        <h4 className="text-sm font-semibold text-pgr-text dark:text-gray-100 mb-3 flex items-center gap-2">
           <Calendar className="h-4 w-4" /> Datas e Prazos Processuais
         </h4>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="medidasAplicadas" className="text-pgr-text">Medidas Aplicadas</Label>
+        <Label htmlFor="medidasAplicadas" className="text-pgr-text dark:text-gray-100">Medidas Aplicadas</Label>
         <Select value={formData.medidasAplicadas} onValueChange={v => update("medidasAplicadas", v)}>
-          <SelectTrigger className="bg-stone-100 text-pgr-text border-stone-200"><SelectValue placeholder="Selecionar medida" /></SelectTrigger>
+          <SelectTrigger className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700"><SelectValue placeholder="Selecionar medida" /></SelectTrigger>
           <SelectContent>
             {MEDIDAS_LIST.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
           </SelectContent>
@@ -2130,46 +2621,47 @@ function FormFields({ formData, setFormData }: {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="dataMedidasAplicadas" className="text-pgr-text">Data das Medidas Aplicadas</Label>
-        <Input id="dataMedidasAplicadas" type="date" value={formData.dataMedidasAplicadas ? formData.dataMedidasAplicadas.slice(0, 10) : ""} onChange={e => update("dataMedidasAplicadas", e.target.value || null)} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="dataMedidasAplicadas" className="text-pgr-text dark:text-gray-100">Data das Medidas Aplicadas</Label>
+        <Input id="dataMedidasAplicadas" type="date" value={formData.dataMedidasAplicadas ? formData.dataMedidasAplicadas.slice(0, 10) : ""} onChange={e => update("dataMedidasAplicadas", e.target.value || null)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
         <p className="text-[10px] text-pgr-text-muted">1º prazo será calculado automaticamente (+3 meses)</p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="dataRemessaJg" className="text-pgr-text">Data de Remessa ao JG</Label>
-        <Input id="dataRemessaJg" type="date" value={formData.dataRemessaJg ? formData.dataRemessaJg.slice(0, 10) : ""} onChange={e => update("dataRemessaJg", e.target.value || null)} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="dataRemessaJg" className="text-pgr-text dark:text-gray-100">Data de Remessa ao JG</Label>
+        <Input id="dataRemessaJg" type="date" value={formData.dataRemessaJg ? formData.dataRemessaJg.slice(0, 10) : ""} onChange={e => update("dataRemessaJg", e.target.value || null)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="dataRegresso" className="text-pgr-text">Data de Regresso</Label>
-        <Input id="dataRegresso" type="date" value={formData.dataRegresso ? formData.dataRegresso.slice(0, 10) : ""} onChange={e => update("dataRegresso", e.target.value || null)} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="dataRegresso" className="text-pgr-text dark:text-gray-100">Data de Regresso</Label>
+        <Input id="dataRegresso" type="date" value={formData.dataRegresso ? formData.dataRegresso.slice(0, 10) : ""} onChange={e => update("dataRegresso", e.target.value || null)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="dataRemessaSic" className="text-pgr-text">Data de Remessa ao SIC</Label>
-        <Input id="dataRemessaSic" type="date" value={formData.dataRemessaSic ? formData.dataRemessaSic.slice(0, 10) : ""} onChange={e => update("dataRemessaSic", e.target.value || null)} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="dataRemessaSic" className="text-pgr-text dark:text-gray-100">Data de Remessa ao SIC</Label>
+        <Input id="dataRemessaSic" type="date" value={formData.dataRemessaSic ? formData.dataRemessaSic.slice(0, 10) : ""} onChange={e => update("dataRemessaSic", e.target.value || null)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="magistrado" className="text-pgr-text">Magistrado Responsável</Label>
-        <Input id="magistrado" value={formData.magistrado} onChange={e => update("magistrado", e.target.value)} placeholder="Nome do magistrado" className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="magistrado" className="text-pgr-text dark:text-gray-100">Magistrado Responsável</Label>
+        <Input id="magistrado" value={formData.magistrado} onChange={e => update("magistrado", e.target.value)} placeholder="Nome do magistrado" className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
 
       {/* Prorrogacao */}
       <div className="md:col-span-2 mt-2">
-        <h4 className="text-sm font-semibold text-pgr-text mb-3 flex items-center gap-2">
+        <h4 className="text-sm font-semibold text-pgr-text dark:text-gray-100 mb-3 flex items-center gap-2">
           <Clock className="h-4 w-4" /> Prorrogação (2º Prazo)
         </h4>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="dataProrrogacao" className="text-pgr-text">Data de Prorrogação</Label>
-        <Input id="dataProrrogacao" type="date" value={formData.dataProrrogacao ? formData.dataProrrogacao.slice(0, 10) : ""} onChange={e => update("dataProrrogacao", e.target.value || null)} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="dataProrrogacao" className="text-pgr-text dark:text-gray-100">Data de Prorrogação</Label>
+        <Input id="dataProrrogacao" type="date" value={formData.dataProrrogacao ? formData.dataProrrogacao.slice(0, 10) : ""} onChange={e => update("dataProrrogacao", e.target.value || null)} className={`bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary ${formErrors?.dataProrrogacao ? 'border-red-400 focus:border-red-500' : ''}`} />
+        {formErrors?.dataProrrogacao && <p className="text-xs text-red-500">{formErrors.dataProrrogacao}</p>}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="duracaoProrrogacao" className="text-pgr-text">Duração da Prorrogação (meses)</Label>
-        <Input id="duracaoProrrogacao" type="number" min={0} max={12} value={formData.duracaoProrrogacao || ""} onChange={e => update("duracaoProrrogacao", parseInt(e.target.value) || 0)} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="duracaoProrrogacao" className="text-pgr-text dark:text-gray-100">Duração da Prorrogação (meses)</Label>
+        <Input id="duracaoProrrogacao" type="number" min={0} max={12} value={formData.duracaoProrrogacao || ""} onChange={e => update("duracaoProrrogacao", parseInt(e.target.value) || 0)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
         <p className="text-[10px] text-pgr-text-muted">2º prazo = Data Prorrogação + Duração</p>
       </div>
 
@@ -2200,20 +2692,20 @@ function FormFields({ formData, setFormData }: {
 
       {/* Observations */}
       <div className="md:col-span-2 mt-2">
-        <h4 className="text-sm font-semibold text-pgr-text mb-3 flex items-center gap-2">
+        <h4 className="text-sm font-semibold text-pgr-text dark:text-gray-100 mb-3 flex items-center gap-2">
           <FileText className="h-4 w-4" /> Observações
         </h4>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="remessaJgAlteracao" className="text-pgr-text">Remessa ao JG / Alteração</Label>
-        <Textarea id="remessaJgAlteracao" value={formData.remessaJgAlteracao} onChange={e => update("remessaJgAlteracao", e.target.value)} placeholder="Histórico de alterações..." rows={3} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="remessaJgAlteracao" className="text-pgr-text dark:text-gray-100">Remessa ao JG / Alteração</Label>
+        <Textarea id="remessaJgAlteracao" value={formData.remessaJgAlteracao} onChange={e => update("remessaJgAlteracao", e.target.value)} placeholder="Histórico de alterações..." rows={3} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="status" className="text-pgr-text">Status</Label>
+        <Label htmlFor="status" className="text-pgr-text dark:text-gray-100">Status</Label>
         <Select value={formData.status} onValueChange={v => update("status", v)}>
-          <SelectTrigger className="bg-stone-100 text-pgr-text border-stone-200"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ativo">Ativo</SelectItem>
             <SelectItem value="vencido">Vencido</SelectItem>
@@ -2223,24 +2715,25 @@ function FormFields({ formData, setFormData }: {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="obs1" className="text-pgr-text">Observação 1</Label>
-        <Textarea id="obs1" value={formData.obs1} onChange={e => update("obs1", e.target.value)} rows={2} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="obs1" className="text-pgr-text dark:text-gray-100">Observação 1</Label>
+        <Textarea id="obs1" value={formData.obs1} onChange={e => update("obs1", e.target.value)} rows={2} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="obs2" className="text-pgr-text">Observação 2</Label>
-        <Textarea id="obs2" value={formData.obs2} onChange={e => update("obs2", e.target.value)} rows={2} className="bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary" />
+        <Label htmlFor="obs2" className="text-pgr-text dark:text-gray-100">Observação 2</Label>
+        <Textarea id="obs2" value={formData.obs2} onChange={e => update("obs2", e.target.value)} rows={2} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary" />
       </div>
     </div>
   );
 }
 
 // ===================== DASHBOARD VIEW =====================
-function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
+function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
   stats: DashboardStats | null;
   loading: boolean;
   onNavigate: (view: string) => void;
   onViewDetail: (id: number) => void;
+  authUser: { username: string; nome: string; role: string } | null;
 }) {
   if (!stats) {
     return (
@@ -2252,6 +2745,8 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
       </div>
     );
   }
+
+  const isMagistrado = authUser?.role === 'magistrado';
 
   const conformidade = stats.ativos > 0
     ? Math.round(((stats.ativos - stats.prazosCriticos) / stats.ativos) * 100)
@@ -2277,10 +2772,25 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
 
   return (
     <div className="space-y-6">
+      {/* Magistrado Welcome Banner */}
+      {isMagistrado && (
+        <div className="rounded-xl p-5 bg-gradient-to-r from-teal-600 to-cyan-700 text-white shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+              <Scale className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold">Bem-vindo, {authUser?.nome || authUser?.username}</h2>
+              <p className="text-sm text-white/80">Aqui estão os seus processos sob supervisão</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-pgr-text">Painel</h2>
-          <p className="text-sm text-muted-foreground">Visão geral do sistema de controlo</p>
+          <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">{isMagistrado ? 'Painel do Magistrado' : 'Painel'}</h2>
+          <p className="text-sm text-muted-foreground">{isMagistrado ? 'Visão dos seus processos sob supervisão' : 'Visão geral do sistema de controlo'}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => onNavigate("cadastro")}>
@@ -2294,12 +2804,12 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-stone-200">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-pgr-text-muted font-medium">Total Arguidos</p>
-                <p className="text-2xl font-bold text-pgr-text">{stats.totalArguidos}</p>
+                <p className="text-2xl font-bold text-pgr-text dark:text-gray-100">{stats.totalArguidos}</p>
               </div>
               <div className="w-10 h-10 bg-pgr-surface rounded-lg flex items-center justify-center">
                 <Users className="h-5 w-5 text-pgr-text-muted" />
@@ -2308,7 +2818,7 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
           </CardContent>
         </Card>
 
-        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-green-500">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-green-500">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -2322,7 +2832,7 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
           </CardContent>
         </Card>
 
-        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-red-500">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-red-500">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -2336,7 +2846,7 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
           </CardContent>
         </Card>
 
-        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-amber-500">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-amber-500">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -2353,9 +2863,9 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
 
       {/* Conformidade + Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="bg-pgr-surface border border-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-pgr-text">Taxa de Conformidade</CardTitle>
+            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Taxa de Conformidade</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-center">
@@ -2368,9 +2878,9 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
           </CardContent>
         </Card>
 
-        <Card className="bg-pgr-surface border border-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-pgr-text">Distribuição por Status</CardTitle>
+            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Distribuição por Status</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={160}>
@@ -2387,9 +2897,9 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
           </CardContent>
         </Card>
 
-        <Card className="bg-pgr-surface border border-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-pgr-text">Casos por Crime</CardTitle>
+            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Casos por Crime</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={160}>
@@ -2407,9 +2917,9 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
 
       {/* Monthly Trend */}
       {monthlyData.length > 0 && (
-        <Card className="bg-pgr-surface border border-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2 text-pgr-text">
+            <CardTitle className="text-base font-semibold flex items-center gap-2 text-pgr-text dark:text-gray-100">
               <TrendingUp className="h-4 w-4" /> Evolução Mensal de Casos
             </CardTitle>
           </CardHeader>
@@ -2429,9 +2939,9 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
 
       {/* Urgent Processes - Table */}
       {stats.processosUrgentes.length > 0 && (
-        <Card className="bg-pgr-surface border border-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-pgr-text">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-pgr-text dark:text-gray-100">
               <AlertTriangle className="h-4 w-4 text-red-500" /> Processos com Prazo Próximo
               <span className="ml-auto text-sm font-normal text-pgr-text-muted">{stats.processosUrgentes.length} processo(s)</span>
             </CardTitle>
@@ -2451,7 +2961,7 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
                 {stats.processosUrgentes.map((p, idx) => (
                   <TableRow
                     key={p.id}
-                    className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'} text-pgr-text`}
+                    className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`}
                     onClick={() => onViewDetail(p.id)}
                   >
                     <TableCell className="py-2.5">
@@ -2493,7 +3003,7 @@ function CadastroView({ formData, setFormData, onSubmit }: {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-pgr-text">Novo Cadastro</h2>
+        <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">Novo Cadastro</h2>
         <p className="text-sm text-muted-foreground">Formulário de registro de arguido em prisão preventiva</p>
       </div>
       <Card>
@@ -2515,7 +3025,7 @@ function CadastroView({ formData, setFormData, onSubmit }: {
 }
 
 // ===================== GESTÃO VIEW =====================
-function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, totalRecords, onEdit, onDelete, onView, onPdf, onRefresh, onExport, onNew }: {
+function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, totalRecords, onEdit, onDelete, onView, onPdf, onRefresh, onExport, onNew, canCreate, canEdit, canDelete, canExport, canImport }: {
   arguidos: Arguido[];
   loading: boolean;
   searchTerm: string; setSearchTerm: (v: string) => void;
@@ -2530,25 +3040,145 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
   onRefresh: () => void;
   onExport: () => void;
   onNew: () => void;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canExport?: boolean;
+  canImport?: boolean;
 }) {
+  const { toast } = useToast();
+  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  // Batch operations state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [batchStatus, setBatchStatus] = useState("");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [detencaoDe, setDetencaoDe] = useState("");
+  const [detencaoAte, setDetencaoAte] = useState("");
+  const [prazoDe, setPrazoDe] = useState("");
+  const [prazoAte, setPrazoAte] = useState("");
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === arguidos.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(arguidos.map(a => a.id)));
+    }
+  };
+
+  const handleBatchStatusChange = async () => {
+    if (!batchStatus || selectedIds.size === 0) return;
+    setBatchLoading(true);
+    try {
+      const res = await fetch('/api/arguidos/batch', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds), updates: { status: batchStatus } }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast({ title: 'Status actualizado', description: `${data.updated} registo(s) actualizado(s) para "${batchStatus}"` });
+        setSelectedIds(new Set());
+        setBatchStatus("");
+        onRefresh();
+      } else {
+        toast({ title: 'Erro', description: 'Falha na operação.', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Erro', description: 'Erro de ligação.', variant: 'destructive' });
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setDetencaoDe(""); setDetencaoAte(""); setPrazoDe(""); setPrazoAte("");
+  };
+
+  const hasAdvancedFilters = detencaoDe || detencaoAte || prazoDe || prazoAte;
+
+  const handleDownloadTemplate = () => {
+    const headers = 'numero_processo,nome_arguido,nome_pai,nome_mae,data_detencao,crime,magistrado,medidas_aplicadas,data_medidas_aplicadas,status';
+    const exampleRow = 'PROC-2024-001,João da Silva,António da Silva,Maria da Conceição,2024-01-15,Homicídio,Dr. Manuel Santos,Prisão Preventiva,2024-01-20,ativo';
+    const csvContent = headers + '\n' + exampleRow + '\n';
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'modelo_importacao_arguidos.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    toast({ title: 'Template descarregado', description: 'Use este modelo para preencher os dados.' });
+  };
+
+  const handleImportCsv = async () => {
+    if (!csvFile) {
+      toast({ title: 'Sem ficheiro', description: 'Selecione um ficheiro CSV.', variant: 'destructive' });
+      return;
+    }
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', csvFile);
+      const res = await fetch('/api/arguidos/import', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast({
+          title: 'Importação concluída',
+          description: `${data.imported} registo${data.imported !== 1 ? 's' : ''} importado${data.imported !== 1 ? 's' : ''} com sucesso.${data.errors.length > 0 ? ` ${data.errors.length} erro(s) encontrado(s).` : ''}`,
+          variant: data.errors.length > 0 ? 'default' : 'default',
+        });
+        setCsvDialogOpen(false);
+        setCsvFile(null);
+        onRefresh();
+      } else {
+        toast({ title: 'Erro na importação', description: data.error || 'Falha ao importar o ficheiro CSV.', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Erro', description: 'Erro de ligação ao servidor.', variant: 'destructive' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-pgr-text">Gestão de Arguidos</h2>
+          <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">Gestão de Arguidos</h2>
           <p className="text-sm text-muted-foreground">{totalRecords} registo{totalRecords !== 1 ? "s" : ""} encontrado{totalRecords !== 1 ? "s" : ""}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={onRefresh}><RefreshCw className="h-4 w-4" /></Button>
-          <Button variant="outline" size="sm" onClick={onExport}><FileText className="h-4 w-4 mr-1" /> Exportar PDF</Button>
-          <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22]" onClick={onNew}>
-            <Plus className="h-4 w-4 mr-1" /> Novo
-          </Button>
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={onExport}><FileText className="h-4 w-4 mr-1" /> Exportar PDF</Button>
+          )}
+          {canImport && (
+            <Button variant="outline" size="sm" onClick={() => setCsvDialogOpen(true)}><Upload className="h-4 w-4 mr-1" /> Importar CSV</Button>
+          )}
+          {canCreate && (
+            <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22]" onClick={onNew}>
+              <Plus className="h-4 w-4 mr-1" /> Novo
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Search & Filters */}
-      <Card className="bg-pgr-surface border border-stone-200">
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row gap-3">
             <div className="flex-1 relative">
@@ -2557,12 +3187,12 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                 placeholder="Pesquisar por nome, Nº processo ou ID..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="pl-9 bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary placeholder:text-stone-400"
+                className="pl-9 bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary placeholder:text-stone-400 dark:placeholder:text-gray-500"
               />
             </div>
             <div className="flex gap-2 flex-wrap">
               <Select value={filterStatus} onValueChange={v => setFilterStatus(v === "todos" ? "" : v)}>
-                <SelectTrigger className="w-36 bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectTrigger className="w-36 bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos Status</SelectItem>
                   <SelectItem value="ativo">Ativo</SelectItem>
@@ -2571,7 +3201,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                 </SelectContent>
               </Select>
               <Select value={filterPrazo} onValueChange={v => setFilterPrazo(v === "todos" ? "" : v)}>
-                <SelectTrigger className="w-40 bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary"><SelectValue placeholder="Prazo" /></SelectTrigger>
+                <SelectTrigger className="w-40 bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary"><SelectValue placeholder="Prazo" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos Prazos</SelectItem>
                   <SelectItem value="vencido">Vencido</SelectItem>
@@ -2585,8 +3215,68 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
         </CardContent>
       </Card>
 
+      {/* Advanced Date Filters (collapsible) */}
+      <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className="flex items-center gap-2 text-sm font-medium text-pgr-text-muted hover:text-pgr-text dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
+        <Filter className="h-4 w-4" />
+        {showAdvancedFilters ? 'Ocultar Filtros Avançados' : 'Filtros Avançados'}
+        {hasAdvancedFilters && <Badge variant="secondary" className="bg-amber-100 text-amber-800 text-[10px] dark:bg-amber-900 dark:text-amber-200">Ativos</Badge>}
+      </button>
+      {showAdvancedFilters && (
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 animate-[fadeIn_0.2s_ease-out]">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-pgr-text-muted dark:text-gray-400">Detenção de</Label>
+                <Input type="date" value={detencaoDe} onChange={e => setDetencaoDe(e.target.value)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 text-sm h-9" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-pgr-text-muted dark:text-gray-400">Detenção até</Label>
+                <Input type="date" value={detencaoAte} onChange={e => setDetencaoAte(e.target.value)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 text-sm h-9" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-pgr-text-muted dark:text-gray-400">1º Prazo de</Label>
+                <Input type="date" value={prazoDe} onChange={e => setPrazoDe(e.target.value)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 text-sm h-9" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-pgr-text-muted dark:text-gray-400">1º Prazo até</Label>
+                <Input type="date" value={prazoAte} onChange={e => setPrazoAte(e.target.value)} className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 text-sm h-9" />
+              </div>
+            </div>
+            {hasAdvancedFilters && (
+              <div className="mt-3 flex justify-end">
+                <Button variant="ghost" size="sm" onClick={handleClearFilters} className="text-xs text-pgr-text-muted hover:text-red-600">Limpar Filtros</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Batch Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-stone-800 dark:bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 border border-stone-700 dark:border-gray-700 animate-[fadeIn_0.2s_ease-out]">
+          <span className="text-sm font-semibold">{selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}</span>
+          <div className="w-px h-6 bg-stone-600" />
+          <Select value={batchStatus} onValueChange={setBatchStatus}>
+            <SelectTrigger className="w-36 h-8 text-xs bg-stone-700 border-stone-600 text-white"><SelectValue placeholder="Alterar Status..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ativo">Ativo</SelectItem>
+              <SelectItem value="vencido">Vencido</SelectItem>
+              <SelectItem value="encerrado">Encerrado</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white" disabled={!batchStatus || batchLoading} onClick={handleBatchStatusChange}>
+            {batchLoading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
+            Aplicar
+          </Button>
+          <div className="w-px h-6 bg-stone-600" />
+          <Button size="sm" variant="ghost" className="h-8 text-xs text-stone-400 hover:text-white hover:bg-stone-700" onClick={() => setSelectedIds(new Set())}>
+            Limpar
+          </Button>
+        </div>
+      )}
+
       {/* Table */}
-      <Card className="bg-pgr-surface border border-stone-200">
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[calc(100vh-320px)] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-16">
@@ -2596,13 +3286,14 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
             <div className="text-center py-16 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-3 opacity-20" />
               <p className="text-sm">Nenhum registo encontrado.</p>
-              <Button variant="link" size="sm" onClick={onNew}>Criar novo registo</Button>
+              {canCreate && <Button variant="link" size="sm" onClick={onNew}>Criar novo registo</Button>}
             </div>
           ) : (
             <>
               <Table>
                 <TableHeader className="sticky top-0 z-10">
                   <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+                    <TableHead className="text-sm font-semibold text-white w-10"><Checkbox checked={selectedIds.size === arguidos.length && arguidos.length > 0} onCheckedChange={toggleSelectAll} className="border-white/40" /></TableHead>
                     <TableHead className="text-sm font-semibold text-white">ID</TableHead>
                     <TableHead className="text-sm font-semibold text-white">Nº Processo</TableHead>
                     <TableHead className="text-sm font-semibold text-white">Nome</TableHead>
@@ -2619,7 +3310,8 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                     const days2 = getDaysRemaining(a.fimSegundoPrazo);
                     const nearestDays = [days1, days2].filter(d => d !== null).sort((a, b) => a! - b!)[0] ?? null;
                     return (
-                      <TableRow key={a.id} className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'} text-pgr-text`} onClick={() => onView(a)}>
+                      <TableRow key={a.id} className={`cursor-pointer transition-colors ${selectedIds.has(a.id) ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-inset ring-blue-300 dark:ring-blue-700' : idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`} onClick={() => onView(a)}>
+                        <TableCell onClick={e => e.stopPropagation()}><Checkbox checked={selectedIds.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} /></TableCell>
                         <TableCell className="text-sm font-mono text-[#555] whitespace-nowrap">{a.numeroId}</TableCell>
                         <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[120px] truncate">{a.numeroProcesso}</p></TableCell>
                         <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[250px] truncate">{a.nomeArguido}</p></TableCell>
@@ -2642,9 +3334,15 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onView(a); }}><Eye className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Ver</TooltipContent></Tooltip>
-                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onEdit(a); }}><Edit className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Editar</TooltipContent></Tooltip>
-                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="sm" className="h-7 gap-1 text-[#D35400] hover:text-[#BA4A00] hover:bg-[#D35400]/10 text-sm font-semibold px-2" onClick={(e) => { e.stopPropagation(); onPdf(a); }}><FileDown className="h-3.5 w-3.5" />PDF</Button></TooltipTrigger><TooltipContent>Descarregar Ficha PDF</TooltipContent></Tooltip>
-                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={(e) => { e.stopPropagation(); onDelete(a.id); }}><Trash2 className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Eliminar</TooltipContent></Tooltip>
+                            {canEdit && (
+                              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onEdit(a); }}><Edit className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Editar</TooltipContent></Tooltip>
+                            )}
+                            {canExport && (
+                              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="sm" className="h-7 gap-1 text-[#D35400] hover:text-[#BA4A00] hover:bg-[#D35400]/10 text-sm font-semibold px-2" onClick={(e) => { e.stopPropagation(); onPdf(a); }}><FileDown className="h-3.5 w-3.5" />PDF</Button></TooltipTrigger><TooltipContent>Descarregar Ficha PDF</TooltipContent></Tooltip>
+                            )}
+                            {canDelete && (
+                              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={(e) => { e.stopPropagation(); onDelete(a.id); }}><Trash2 className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Eliminar</TooltipContent></Tooltip>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -2662,6 +3360,51 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
           )}
         </CardContent>
       </Card>
+      {/* CSV Import Dialog */}
+      <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-pgr-text flex items-center gap-2">
+              <Upload className="h-5 w-5" /> Importar Arguidos via CSV
+            </DialogTitle>
+            <DialogDescription>
+              Importe arguidos em massa usando um ficheiro CSV.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-pgr-text dark:text-gray-100">Ficheiro CSV</Label>
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={e => setCsvFile(e.target.files?.[0] || null)}
+                className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700"
+              />
+              {csvFile && (
+                <p className="text-xs text-muted-foreground">Selecionado: {csvFile.name}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>Campos obrigatórios: <strong>nome_arguido</strong>, <strong>crime</strong></span>
+            </div>
+            <Button variant="link" size="sm" className="text-[#D35400] p-0 h-auto" onClick={handleDownloadTemplate}>
+              <Download className="h-4 w-4 mr-1" /> Descarregar modelo CSV
+            </Button>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setCsvDialogOpen(false)}>Cancelar</Button>
+            <Button
+              className="bg-[#D35400] hover:bg-[#E67E22]"
+              onClick={handleImportCsv}
+              disabled={!csvFile || importing}
+            >
+              {importing ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+              {importing ? 'A importar...' : 'Importar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -2678,7 +3421,7 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-pgr-text">Sistema de Alertas</h2>
+          <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">Sistema de Alertas</h2>
           <p className="text-sm text-muted-foreground">{alertas.length} alerta{alertas.length !== 1 ? "s" : ""} registado{alertas.length !== 1 ? "s" : ""}</p>
         </div>
         <div className="flex gap-2">
@@ -2722,9 +3465,9 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
       )}
 
       {/* Alert History - Table */}
-      <Card className="bg-pgr-surface border border-stone-200">
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold text-pgr-text">Histórico de Alertas</CardTitle>
+          <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Histórico de Alertas</CardTitle>
           <CardDescription className="text-pgr-text-muted">Alertas gerados pelo sistema de verificação automática</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -2751,7 +3494,7 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
                 {alertas.map((alerta, idx) => (
                   <TableRow
                     key={alerta.id}
-                    className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'} text-pgr-text`}
+                    className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`}
                     onClick={() => alerta.arguidoId && onView(alerta.arguidoId)}
                   >
                     <TableCell className="py-2.5">
@@ -2791,9 +3534,9 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
       </Card>
 
       {/* Alert Rules */}
-      <Card className="bg-pgr-surface border border-stone-200">
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold text-pgr-text">Regras de Alerta</CardTitle>
+          <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Regras de Alerta</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -2826,8 +3569,46 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
 }
 
 // ===================== RELATÓRIOS VIEW =====================
-function RelatoriosView({ stats }: { stats: DashboardStats | null }) {
-  if (!stats) return null;
+function RelatoriosView({ stats, reportFilters, setReportFilters, onApplyFilters, reportLoading, onExportPdf, canExport }: { stats: DashboardStats | null; reportFilters: { startDate: string; endDate: string; crime: string; status: string; magistrado: string }; setReportFilters: React.Dispatch<React.SetStateAction<{ startDate: string; endDate: string; crime: string; status: string; magistrado: string }>>; onApplyFilters: () => void; reportLoading: boolean; onExportPdf: () => void; canExport: boolean }) {
+  const hasActiveFilters = reportFilters.startDate || reportFilters.endDate || reportFilters.crime || reportFilters.status || reportFilters.magistrado;
+
+  const handleClearFilters = () => {
+    setReportFilters({ startDate: '', endDate: '', crime: '', status: '', magistrado: '' });
+  };
+
+  if (reportLoading) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">Relatórios e Analytics</h2>
+          <p className="text-sm text-muted-foreground">Análise detalhada dos dados do sistema</p>
+        </div>
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+          <CardContent className="p-12 text-center">
+            <RefreshCw className="h-8 w-8 mx-auto mb-3 animate-spin text-pgr-text-muted" />
+            <p className="text-sm text-pgr-text-muted">A aplicar filtros...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">Relatórios e Analytics</h2>
+          <p className="text-sm text-muted-foreground">Análise detalhada dos dados do sistema</p>
+        </div>
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <BarChart3 className="h-10 w-10 mx-auto mb-3 opacity-20" />
+            <p className="text-sm">A carregar dados do relatório...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const crimeChartData = stats.crimes.map(c => ({
     name: c.crime,
@@ -2849,24 +3630,138 @@ function RelatoriosView({ stats }: { stats: DashboardStats | null }) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold text-pgr-text">Relatórios e Analytics</h2>
-        <p className="text-sm text-muted-foreground">Análise detalhada dos dados do sistema</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">Relatórios e Analytics</h2>
+          <p className="text-sm text-muted-foreground">Análise detalhada dos dados do sistema</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={onExportPdf} disabled={!canExport}>
+            <FileDown className="h-4 w-4 mr-1" /> Exportar Relatório
+          </Button>
+        </div>
       </div>
+
+      {/* Advanced Filters */}
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-pgr-text-muted" />
+            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Filtros Avançados</CardTitle>
+            {hasActiveFilters && (
+              <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 text-xs">Filtros ativos</Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-pgr-text-muted">Data Início</Label>
+              <Input
+                type="date"
+                value={reportFilters.startDate}
+                onChange={e => setReportFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-pgr-text-muted">Data Fim</Label>
+              <Input
+                type="date"
+                value={reportFilters.endDate}
+                onChange={e => setReportFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-pgr-text-muted">Crime</Label>
+              <Select value={reportFilters.crime || "__all__"} onValueChange={v => setReportFilters(prev => ({ ...prev, crime: v === "__all__" ? "" : v }))}>
+                <SelectTrigger className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary text-sm">
+                  <SelectValue placeholder="Todos os crimes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todos os crimes</SelectItem>
+                  {CRIMES_LIST.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-pgr-text-muted">Status</Label>
+              <Select value={reportFilters.status || "__all__"} onValueChange={v => setReportFilters(prev => ({ ...prev, status: v === "__all__" ? "" : v }))}>
+                <SelectTrigger className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary text-sm">
+                  <SelectValue placeholder="Todos os status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todos os status</SelectItem>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="vencido">Vencido</SelectItem>
+                  <SelectItem value="encerrado">Encerrado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1 sm:col-span-2 lg:col-span-4">
+              <Label className="text-xs text-pgr-text-muted">Magistrado</Label>
+              <Input
+                type="text"
+                placeholder="Filtrar por nome do magistrado..."
+                value={reportFilters.magistrado}
+                onChange={e => setReportFilters(prev => ({ ...prev, magistrado: e.target.value }))}
+                className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22]" onClick={onApplyFilters}>
+              <Filter className="h-4 w-4 mr-1" /> Filtrar
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleClearFilters}>
+              <RefreshCw className="h-4 w-4 mr-1" /> Limpar Filtros
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="bg-pgr-surface border border-stone-200"><CardContent className="p-3 text-center"><p className="text-lg font-bold text-pgr-text">{stats.totalArguidos}</p><p className="text-sm text-pgr-text-muted">Total Registados</p></CardContent></Card>
-        <Card className="bg-pgr-surface border border-stone-200"><CardContent className="p-3 text-center"><p className="text-lg font-bold text-green-600">{stats.ativos}</p><p className="text-sm text-pgr-text-muted">Ativos</p></CardContent></Card>
-        <Card className="bg-pgr-surface border border-stone-200"><CardContent className="p-3 text-center"><p className="text-lg font-bold text-red-500">{stats.vencidos}</p><p className="text-sm text-pgr-text-muted">Vencidos</p></CardContent></Card>
-        <Card className="bg-pgr-surface border border-stone-200"><CardContent className="p-3 text-center"><p className="text-lg font-bold text-amber-600">{stats.prazosProximos}</p><p className="text-sm text-pgr-text-muted">Prazos Próximos</p></CardContent></Card>
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800"><CardContent className="p-3 text-center"><p className="text-lg font-bold text-pgr-text dark:text-gray-100">{stats.totalArguidos}</p><p className="text-sm text-pgr-text-muted">Total Registados</p></CardContent></Card>
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800"><CardContent className="p-3 text-center"><p className="text-lg font-bold text-green-600">{stats.ativos}</p><p className="text-sm text-pgr-text-muted">Ativos</p></CardContent></Card>
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800"><CardContent className="p-3 text-center"><p className="text-lg font-bold text-red-500">{stats.vencidos}</p><p className="text-sm text-pgr-text-muted">Vencidos</p></CardContent></Card>
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800"><CardContent className="p-3 text-center"><p className="text-lg font-bold text-amber-600">{stats.prazosProximos}</p><p className="text-sm text-pgr-text-muted">Prazos Próximos</p></CardContent></Card>
       </div>
+
+      {/* Status Distribution */}
+      {stats.statusCounts && stats.statusCounts.length > 0 && (
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Distribuição por Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3">
+              {stats.statusCounts.map((sc, idx) => {
+                const statusColors: Record<string, string> = { ativo: 'bg-green-100 text-green-700 border-green-200', vencido: 'bg-red-100 text-red-700 border-red-200', encerrado: 'bg-stone-200 text-stone-600 border-stone-300' };
+                const barColors: Record<string, string> = { ativo: 'bg-green-500', vencido: 'bg-red-500', encerrado: 'bg-stone-400' };
+                const pct = stats.totalArguidos > 0 ? (sc._count.status / stats.totalArguidos) * 100 : 0;
+                return (
+                  <div key={idx} className={`rounded-lg border p-3 ${statusColors[sc.status] || 'bg-stone-100 text-stone-600 border-stone-200'}`}>
+                    <p className="text-xs font-medium uppercase tracking-wider opacity-70">{sc.status}</p>
+                    <p className="text-xl font-bold mt-1">{sc._count.status}</p>
+                    <div className="mt-2 h-1.5 bg-black/10 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${barColors[sc.status] || 'bg-stone-400'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                    </div>
+                    <p className="text-xs mt-1 opacity-60">{pct.toFixed(1)}%</p>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Crimes Distribution */}
-        <Card className="bg-pgr-surface border border-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-pgr-text">Distribuição por Crime</CardTitle>
+            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Distribuição por Crime</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -2883,9 +3778,9 @@ function RelatoriosView({ stats }: { stats: DashboardStats | null }) {
         </Card>
 
         {/* Magistrado Load */}
-        <Card className="bg-pgr-surface border border-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-pgr-text">Carga por Magistrado</CardTitle>
+            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Carga por Magistrado</CardTitle>
           </CardHeader>
           <CardContent>
             {magistradoData.length === 0 ? (
@@ -2905,9 +3800,9 @@ function RelatoriosView({ stats }: { stats: DashboardStats | null }) {
         </Card>
 
         {/* Monthly Trend */}
-        <Card className="lg:col-span-2 bg-pgr-surface border border-stone-200">
+        <Card className="lg:col-span-2 bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-pgr-text">Evolução Mensal</CardTitle>
+            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Evolução Mensal</CardTitle>
           </CardHeader>
           <CardContent>
             {monthlyData.length === 0 ? (
@@ -2929,9 +3824,9 @@ function RelatoriosView({ stats }: { stats: DashboardStats | null }) {
       </div>
 
       {/* Full Data Table */}
-      <Card className="bg-pgr-surface border border-stone-200">
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold text-pgr-text">Resumo por Crime</CardTitle>
+          <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Resumo por Crime</CardTitle>
         </CardHeader>
         <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[400px]">
           <Table>
@@ -2944,7 +3839,7 @@ function RelatoriosView({ stats }: { stats: DashboardStats | null }) {
             </TableHeader>
             <TableBody>
               {stats.crimes.map((c, idx) => (
-                <TableRow key={idx} className={`transition-colors ${idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'} text-pgr-text`}>
+                <TableRow key={idx} className={`transition-colors ${idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`}>
                   <TableCell className="text-base font-medium text-[#222]">{c.crime || "Não especificado"}</TableCell>
                   <TableCell className="text-base text-right text-[#222]">{c._count.crime}</TableCell>
                   <TableCell className="text-base text-right text-[#222]">
@@ -3026,12 +3921,12 @@ function ConsultarView() {
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       <div>
-        <h2 className="text-2xl font-bold text-pgr-text">Consultar Arguido</h2>
+        <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">Consultar Arguido</h2>
         <p className="text-sm text-muted-foreground">Pesquise por nome, número de processo ou ID para ver detalhes completos.</p>
       </div>
 
       {/* Search Bar */}
-      <Card className="bg-pgr-surface border border-stone-200">
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardContent className="p-4">
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1">
@@ -3040,7 +3935,7 @@ function ConsultarView() {
                 placeholder="Pesquisar por nome, Nº processo ou ID..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="pl-9 bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary placeholder:text-stone-400"
+                className="pl-9 bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary placeholder:text-stone-400 dark:placeholder:text-gray-500"
                 autoComplete="off"
               />
             </div>
@@ -3058,9 +3953,9 @@ function ConsultarView() {
 
       {/* Results Table */}
       {searchDone && results.length > 0 && (
-        <Card className="bg-pgr-surface border border-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-pgr-text">
+            <CardTitle className="text-sm font-semibold text-pgr-text dark:text-gray-100">
               {results.length} resultado{results.length !== 1 ? 's' : ''} encontrado{results.length !== 1 ? 's' : ''}
             </CardTitle>
           </CardHeader>
@@ -3087,9 +3982,9 @@ function ConsultarView() {
                   return (
                     <TableRow key={a.id} className={`cursor-pointer transition-colors ${
                       isSelected
-                        ? 'bg-stone-300/70 ring-2 ring-inset ring-stone-500'
-                        : idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'
-                    } text-pgr-text`} onClick={() => handleSelectArguido(a)}>
+                        ? 'bg-stone-300/70 dark:bg-gray-700/70 ring-2 ring-inset ring-stone-500 dark:ring-gray-400'
+                        : idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'
+                    } text-pgr-text dark:text-gray-100`} onClick={() => handleSelectArguido(a)}>
                       <TableCell className="text-sm font-mono text-[#555] whitespace-nowrap">{a.numeroId}</TableCell>
                       <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[120px] truncate">{a.numeroProcesso}</p></TableCell>
                       <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[250px] truncate">{a.nomeArguido}</p></TableCell>
@@ -3136,17 +4031,17 @@ function ConsultarView() {
                 <Eye className="h-4 w-4 text-white" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-pgr-text">Ficha Completa do Arguido</h3>
+                <h3 className="text-lg font-bold text-pgr-text dark:text-gray-100">Ficha Completa do Arguido</h3>
                 <p className="text-xs text-muted-foreground">{selectedArguido.nomeArguido} — {selectedArguido.numeroProcesso}</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={handleCloseDetail} className="gap-1.5 border-stone-200 text-pgr-text-muted hover:text-stone-900 hover:bg-stone-100 text-xs">
+            <Button variant="outline" size="sm" onClick={handleCloseDetail} className="gap-1.5 border-stone-200 dark:border-gray-800 text-pgr-text dark:text-gray-100-muted hover:text-stone-900 hover:bg-stone-100 text-xs">
               <ChevronLeft className="h-3.5 w-3.5" />
               Fechar
             </Button>
           </div>
           {detailLoading ? (
-            <Card className="bg-pgr-surface border border-stone-200">
+            <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
               <CardContent className="py-12 flex items-center justify-center">
                 <RefreshCw className="h-6 w-6 animate-spin text-pgr-text-muted" />
               </CardContent>
@@ -3159,7 +4054,7 @@ function ConsultarView() {
 
       {/* No Results */}
       {searchDone && results.length === 0 && (
-        <Card className="bg-pgr-surface border border-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
           <CardContent className="py-16 text-center">
             <Users className="h-12 w-12 mx-auto mb-3 opacity-20" />
             <p className="text-sm text-muted-foreground">Nenhum arguido encontrado.</p>
@@ -3171,17 +4066,406 @@ function ConsultarView() {
   );
 }
 
+// ===================== UTILIZADORES VIEW =====================
+function UtilizadoresView() {
+  const { toast } = useToast();
+  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newNome, setNewNome] = useState('');
+  const [newRole, setNewRole] = useState('operador');
+  const [creating, setCreating] = useState(false);
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/users');
+      if (res.ok) {
+        setUsers(await res.json());
+      }
+    } catch {
+      toast({ title: "Erro", description: "Falha ao carregar utilizadores.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const handleChangeRole = async (userId: number, newRoleVal: string) => {
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId, role: newRoleVal }),
+      });
+      if (res.ok) {
+        toast({ title: "Função atualizada", description: `Função alterada para ${newRoleVal}` });
+        loadUsers();
+      } else {
+        const err = await res.json();
+        toast({ title: "Erro", description: err.error || "Falha ao atualizar.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro", description: "Falha ao atualizar função.", variant: "destructive" });
+    }
+  };
+
+  const handleToggleActive = async (userId: number, ativo: boolean) => {
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId, ativo: !ativo }),
+      });
+      if (res.ok) {
+        toast({ title: ativo ? "Utilizador desativado" : "Utilizador ativado" });
+        loadUsers();
+      } else {
+        toast({ title: "Erro", description: "Falha ao alterar estado.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro", description: "Falha ao alterar estado.", variant: "destructive" });
+    }
+  };
+
+  const handleCreateUser = async () => {
+    if (!newUsername || !newPassword || !newNome) {
+      toast({ title: "Erro", description: "Preencha todos os campos obrigatórios.", variant: "destructive" });
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: newUsername, password: newPassword, nome: newNome, role: newRole }),
+      });
+      if (res.ok) {
+        toast({ title: "Utilizador criado", description: `${newNome} (${newUsername}) criado com sucesso.` });
+        setCreateDialogOpen(false);
+        setNewUsername('');
+        setNewPassword('');
+        setNewNome('');
+        setNewRole('operador');
+        loadUsers();
+      } else {
+        const err = await res.json();
+        toast({ title: "Erro", description: err.error || "Falha ao criar utilizador.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro", description: "Falha ao criar utilizador.", variant: "destructive" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const getRoleBadgeColor = (role: string) => {
+    switch (role) {
+      case 'admin': return 'bg-red-100 text-red-700';
+      case 'operador': return 'bg-blue-100 text-blue-700';
+      case 'magistrado': return 'bg-amber-100 text-amber-700';
+      case 'consultor': return 'bg-green-100 text-green-700';
+      default: return 'bg-stone-100 text-stone-600';
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">Gestão de Utilizadores</h2>
+          <p className="text-sm text-muted-foreground">{users.length} utilizador{users.length !== 1 ? "es" : ""} registado{users.length !== 1 ? "s" : ""}</p>
+        </div>
+        <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22]" onClick={() => setCreateDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-1" /> Novo Utilizador
+        </Button>
+      </div>
+
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+        <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[calc(100vh-280px)] overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <RefreshCw className="h-6 w-6 animate-spin text-pgr-text-muted" />
+            </div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <UserCog className="h-12 w-12 mx-auto mb-3 opacity-20" />
+              <p className="text-sm">Nenhum utilizador registado.</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader className="sticky top-0 z-10">
+                <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+                  <TableHead className="text-sm font-semibold text-white">Username</TableHead>
+                  <TableHead className="text-sm font-semibold text-white">Nome</TableHead>
+                  <TableHead className="text-sm font-semibold text-white">Função</TableHead>
+                  <TableHead className="text-sm font-semibold text-white">Estado</TableHead>
+                  <TableHead className="text-sm font-semibold text-white hidden md:table-cell">Último Login</TableHead>
+                  <TableHead className="text-sm font-semibold text-white hidden lg:table-cell">Criado em</TableHead>
+                  <TableHead className="text-sm font-semibold text-white text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((u, idx) => (
+                  <TableRow key={u.id} className={`transition-colors ${idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`}>
+                    <TableCell className="text-sm font-mono text-[#555] whitespace-nowrap">{u.username}</TableCell>
+                    <TableCell className="text-sm font-medium text-[#222]">{u.nome}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={u.role}
+                        onValueChange={(v) => handleChangeRole(u.id, v)}
+                      >
+                        <SelectTrigger className={`h-7 w-28 text-[11px] font-semibold border-0 ${getRoleBadgeColor(u.role)}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="operador">Operador</SelectItem>
+                          <SelectItem value="magistrado">Magistrado</SelectItem>
+                          <SelectItem value="consultor">Consultor</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={u.ativo ? "default" : "secondary"} className={`text-[10px] font-semibold ${u.ativo ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-stone-200 text-stone-500 hover:bg-stone-200'}`}>
+                        {u.ativo ? 'Ativo' : 'Inativo'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground hidden md:table-cell">
+                      {u.ultimoLogin ? formatDate(u.ultimoLogin) : '—'}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground hidden lg:table-cell">
+                      {formatDate(u.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${u.ativo ? 'text-amber-500 hover:text-amber-700' : 'text-green-600 hover:text-green-700'}`}
+                            onClick={() => handleToggleActive(u.id, u.ativo)}
+                          >
+                            {u.ativo ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{u.ativo ? 'Desativar' : 'Ativar'}</TooltipContent>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create User Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-md border-stone-200 dark:border-gray-800 text-pgr-text dark:text-gray-100">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-pgr-primary" />
+              Novo Utilizador
+            </DialogTitle>
+            <DialogDescription>Crie uma nova conta de acesso ao sistema</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Username *</Label>
+              <Input
+                placeholder="nome.apelido"
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value.toLowerCase().trim())}
+                className="text-sm bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary placeholder:text-stone-400 dark:placeholder:text-gray-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Senha *</Label>
+              <Input
+                type="password"
+                placeholder="Senha segura"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="text-sm bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary placeholder:text-stone-400 dark:placeholder:text-gray-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Nome Completo *</Label>
+              <Input
+                placeholder="Nome completo do utilizador"
+                value={newNome}
+                onChange={(e) => setNewNome(e.target.value)}
+                className="text-sm bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary placeholder:text-stone-400 dark:placeholder:text-gray-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Função</Label>
+              <Select value={newRole} onValueChange={setNewRole}>
+                <SelectTrigger className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary">
+                  <SelectValue placeholder="Selecionar função" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="operador">Operador</SelectItem>
+                  <SelectItem value="magistrado">Magistrado</SelectItem>
+                  <SelectItem value="consultor">Consultor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setCreateDialogOpen(false)} disabled={creating}>Cancelar</Button>
+            <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22]" onClick={handleCreateUser} disabled={creating || !newUsername || !newPassword || !newNome}>
+              {creating ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <UserPlus className="h-4 w-4 mr-1" />}
+              {creating ? "A criar..." : "Criar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ===================== DETAIL VIEW =====================
+// ===================== TIMELINE TYPES =====================
+interface TimelineEntry {
+  id: string;
+  type: 'audit' | 'alerta';
+  action: string;
+  description: string;
+  fieldChanged: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  username: string | null;
+  createdAt: string;
+}
+
 function DetailView({ arguido }: { arguido: Arguido }) {
+  const { toast } = useToast();
   const days1 = getDaysRemaining(arguido.fimPrimeiroPrazo);
   const days2 = getDaysRemaining(arguido.fimSegundoPrazo);
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(true);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploadDescription, setUploadDescription] = useState('');
+  const [uploadCategory, setUploadCategory] = useState('outro');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Load timeline data when detail view opens
+  const loadTimeline = async (arguidoId: number) => {
+    try {
+      const res = await fetch(`/api/arguidos/${arguidoId}/history`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.timeline) setTimeline(data.timeline);
+      }
+    } catch {
+      /* non-blocking */
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
+
+  // Load documents for this arguido
+  const loadDocuments = async (arguidoId: number) => {
+    try {
+      const res = await fetch(`/api/documents?arguido_id=${arguidoId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data || []);
+      }
+    } catch {
+      /* non-blocking */
+    } finally {
+      setDocsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (arguido?.id) {
+      loadTimeline(arguido.id);
+      loadDocuments(arguido.id);
+    }
+  }, [arguido?.id]);
+
+  const handleUploadDocument = async () => {
+    if (!uploadFile) {
+      toast({ title: "Erro", description: "Selecione um ficheiro.", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('arguido_id', String(arguido.id));
+      formData.append('description', uploadDescription);
+      formData.append('category', uploadCategory);
+      formData.append('file', uploadFile);
+      const res = await fetch('/api/documents', { method: 'POST', body: formData });
+      if (res.ok) {
+        toast({ title: "Documento anexado", description: uploadFile.name });
+        setUploadDialogOpen(false);
+        setUploadFile(null);
+        setUploadDescription('');
+        setUploadCategory('outro');
+        loadDocuments(arguido.id);
+      } else {
+        const err = await res.json();
+        toast({ title: "Erro", description: err.error || "Falha ao enviar documento.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro", description: "Falha ao enviar documento.", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteDocument = async (docId: number) => {
+    try {
+      const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast({ title: "Documento eliminado" });
+        loadDocuments(arguido.id);
+      } else {
+        toast({ title: "Erro", description: "Falha ao eliminar documento.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro", description: "Falha ao eliminar documento.", variant: "destructive" });
+    }
+  };
+
+  const getCategoryBadge = (category: string) => {
+    switch (category) {
+      case 'mandado': return 'bg-red-100 text-red-700';
+      case 'certidao': return 'bg-blue-100 text-blue-700';
+      case 'relatorio': return 'bg-green-100 text-green-700';
+      default: return 'bg-stone-100 text-stone-600';
+    }
+  };
+
+  const getCategoryLabel = (category: string) => {
+    switch (category) {
+      case 'mandado': return 'Mandado';
+      case 'certidao': return 'Certidão';
+      case 'relatorio': return 'Relatório';
+      default: return 'Outro';
+    }
+  };
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-stone-100 rounded-lg">
         <div>
-          <p className="text-sm font-bold text-pgr-text">{arguido.numeroId}</p>
+          <p className="text-sm font-bold text-pgr-text dark:text-gray-100">{arguido.numeroId}</p>
           <p className="text-lg font-semibold">{arguido.nomeArguido}</p>
           <p className="text-xs text-muted-foreground">Processo Nº {arguido.numeroProcesso}</p>
         </div>
@@ -3256,8 +4540,262 @@ function DetailView({ arguido }: { arguido: Arguido }) {
           </CardContent>
         </Card>
       )}
+
+      {/* Timeline - Linha do Tempo */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Clock className="h-4 w-4 text-pgr-primary" />
+            Linha do Tempo
+          </CardTitle>
+          <CardDescription className="text-[11px]">Histórico de alterações, alertas e ações do sistema</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {timelineLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-5 w-5 animate-spin text-pgr-text-muted" />
+              <span className="ml-2 text-xs text-muted-foreground">A carregar histórico...</span>
+            </div>
+          ) : timeline.length === 0 ? (
+            <div className="text-center py-8">
+              <Clock className="h-8 w-8 mx-auto mb-2 text-stone-300" />
+              <p className="text-xs text-muted-foreground">Sem registos no histórico.</p>
+            </div>
+          ) : (
+            <div className="max-h-80 overflow-y-auto space-y-0">
+              {timeline.map((entry, idx) => {
+                const isAudit = entry.type === 'audit';
+                const dotColor = getTimelineDotColor(entry);
+                const iconBg = getTimelineIconBg(entry);
+                return (
+                  <div key={entry.id} className="flex gap-3 relative">
+                    {/* Vertical line */}
+                    {idx < timeline.length - 1 && (
+                      <div className="absolute left-[15px] top-[32px] bottom-0 w-px bg-stone-200" />
+                    )}
+                    {/* Dot */}
+                    <div className={`relative z-10 mt-1 w-[32px] h-[32px] rounded-full flex items-center justify-center shrink-0 ${iconBg}`}>
+                      {isAudit ? (
+                        entry.action === 'criacao' ? <CheckCircle2 className="h-3.5 w-3.5 text-green-700" /> :
+                        entry.action === 'remocao' ? <Trash2 className="h-3.5 w-3.5 text-red-600" /> :
+                        entry.action === 'status_change' ? <RefreshCw className="h-3.5 w-3.5 text-orange-600" /> :
+                        <Edit className="h-3.5 w-3.5 text-blue-600" />
+                      ) : (
+                        <AlertCircle className={`h-3.5 w-3.5 ${dotColor}`} />
+                      )}
+                    </div>
+                    {/* Content */}
+                    <div className="flex-1 pb-4 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                          isAudit
+                            ? entry.action === 'criacao' ? 'bg-green-100 text-green-700'
+                              : entry.action === 'remocao' ? 'bg-red-100 text-red-700'
+                              : entry.action === 'status_change' ? 'bg-orange-100 text-orange-700'
+                              : 'bg-blue-100 text-blue-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {isAudit ? entry.action : 'alerta'}
+                        </span>
+                        {entry.username && (
+                          <span className="text-[10px] text-muted-foreground">por {entry.username}</span>
+                        )}
+                      </div>
+                      <p className="text-xs font-medium mt-0.5 text-pgr-text">{entry.description}</p>
+                      {/* Show old/new value for field changes */}
+                      {entry.fieldChanged && (entry.oldValue || entry.newValue) && (
+                        <div className="mt-1 text-[10px] flex items-center gap-1.5 flex-wrap">
+                          <span className="text-muted-foreground">{entry.fieldChanged}:</span>
+                          {entry.oldValue && (
+                            <span className="bg-red-50 text-red-600 px-1.5 py-0.5 rounded line-through">{entry.oldValue}</span>
+                          )}
+                          {entry.oldValue && entry.newValue && <span className="text-stone-300">→</span>}
+                          {entry.newValue && (
+                            <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">{entry.newValue}</span>
+                          )}
+                        </div>
+                      )}
+                      {/* Alert deadline info */}
+                      {!isAudit && entry.oldValue && (
+                        <div className="mt-1">
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${getDeadlineColor(
+                            entry.oldValue.includes('Expirado') ? -1 :
+                            entry.oldValue.includes('Vence hoje') ? 0 :
+                            entry.oldValue.includes('Crítico') ? 1 :
+                            entry.oldValue.includes('Atenção') ? 5 : 30
+                          )}`}>
+                            {entry.oldValue}
+                          </span>
+                        </div>
+                      )}
+                      <p className="text-[10px] text-stone-400 mt-0.5">{formatDate(entry.createdAt)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Documentos Anexados */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Paperclip className="h-4 w-4 text-pgr-primary" />
+                Documentos Anexados
+              </CardTitle>
+              <CardDescription className="text-[11px]">Ficheiros e documentos associados a este arguido</CardDescription>
+            </div>
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => setUploadDialogOpen(true)}>
+              <Upload className="h-3.5 w-3.5" />
+              Anexar
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {docsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-5 w-5 animate-spin text-pgr-text-muted" />
+              <span className="ml-2 text-xs text-muted-foreground">A carregar documentos...</span>
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="text-center py-8">
+              <Paperclip className="h-8 w-8 mx-auto mb-2 text-stone-300" />
+              <p className="text-xs text-muted-foreground">Nenhum documento anexado</p>
+            </div>
+          ) : (
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {documents.map((doc) => (
+                <div key={doc.id} className="flex items-start justify-between gap-3 p-3 bg-stone-50 rounded-lg border border-stone-200">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <div className="mt-0.5 h-8 w-8 rounded bg-stone-200 flex items-center justify-center shrink-0">
+                      <FileText className="h-4 w-4 text-stone-500" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-pgr-text truncate">{doc.fileName}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${getCategoryBadge(doc.category)}`}>
+                          {getCategoryLabel(doc.category)}
+                        </span>
+                        <span className="text-[10px] text-stone-400">{formatFileSize(doc.fileSize)}</span>
+                        <span className="text-[10px] text-stone-400">{formatDate(doc.createdAt)}</span>
+                      </div>
+                      {doc.description && (
+                        <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{doc.description}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="inline-flex">
+                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <Download className="h-3.5 w-3.5" />
+                          </Button>
+                        </a>
+                      </TooltipTrigger>
+                      <TooltipContent>Descarregar</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => handleDeleteDocument(doc.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Eliminar</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Upload Document Dialog */}
+      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+        <DialogContent className="max-w-md border-stone-200 dark:border-gray-800 text-pgr-text dark:text-gray-100">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-pgr-primary" />
+              Anexar Documento
+            </DialogTitle>
+            <DialogDescription>Envie um ficheiro para o processo de {arguido.nomeArguido}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Ficheiro *</Label>
+              <Input
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.txt,.zip"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                className="text-sm bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary"
+              />
+              <p className="text-[10px] text-muted-foreground">Tamanho máximo: 10 MB. Formatos: PDF, DOC, XLS, JPG, PNG, TXT, ZIP</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Categoria</Label>
+              <Select value={uploadCategory} onValueChange={setUploadCategory}>
+                <SelectTrigger className="bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary">
+                  <SelectValue placeholder="Selecionar categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mandado">Mandado</SelectItem>
+                  <SelectItem value="certidao">Certidão</SelectItem>
+                  <SelectItem value="relatorio">Relatório</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Descrição</Label>
+              <Textarea
+                placeholder="Descrição do documento (opcional)"
+                value={uploadDescription}
+                onChange={(e) => setUploadDescription(e.target.value)}
+                rows={3}
+                className="text-sm bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary placeholder:text-stone-400 dark:placeholder:text-gray-500"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setUploadDialogOpen(false)} disabled={uploading}>Cancelar</Button>
+            <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22]" onClick={handleUploadDocument} disabled={uploading || !uploadFile}>
+              {uploading ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+              {uploading ? "A enviar..." : "Anexar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function getTimelineDotColor(entry: TimelineEntry): string {
+  const action = entry.action.toLowerCase();
+  if (action.includes('expirado')) return 'text-red-600';
+  if (action.includes('critico')) return 'text-red-500';
+  if (action.includes('vence hoje')) return 'text-orange-500';
+  return 'text-amber-600';
+}
+
+function getTimelineIconBg(entry: TimelineEntry): string {
+  if (entry.type === 'audit') {
+    switch (entry.action) {
+      case 'criacao': return 'bg-green-100';
+      case 'remocao': return 'bg-red-100';
+      case 'status_change': return 'bg-orange-100';
+      default: return 'bg-blue-50';
+    }
+  }
+  // Alert types
+  const action = entry.action.toLowerCase();
+  if (action.includes('expirado') || action.includes('critico')) return 'bg-red-50';
+  if (action.includes('vence hoje')) return 'bg-orange-50';
+  return 'bg-amber-50';
 }
 
 function DetailField({ label, value }: { label: string; value: string }) {
@@ -3265,6 +4803,270 @@ function DetailField({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between py-1 border-b border-stone-200">
       <span className="text-muted-foreground text-xs">{label}</span>
       <span className="font-medium text-xs text-right">{value}</span>
+    </div>
+  );
+}
+
+// ===================== SISTEMA VIEW (Admin: Backup/Restore + System Info) =====================
+function SistemaView({ stats }: { stats: DashboardStats | null }) {
+  const { toast } = useToast();
+  const [exporting, setExporting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreResult, setRestoreResult] = useState<{
+    restored: { arguidos: number; alertas: number; auditLogs: number; documents: number };
+    errors?: string[];
+  } | null>(null);
+  const [sysInfo, setSysInfo] = useState<{
+    totalUsers: number;
+    dbStatus: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const loadSysInfo = async () => {
+      try {
+        const [usersRes, statsRes] = await Promise.all([
+          fetch('/api/users'),
+          fetch('/api/stats'),
+        ]);
+        const totalUsers = usersRes.ok ? (await usersRes.json()).length : 0;
+        const dbStatus = statsRes.ok ? 'online' : 'erro';
+        setSysInfo({ totalUsers, dbStatus });
+      } catch {
+        setSysInfo({ totalUsers: 0, dbStatus: 'erro' });
+      }
+    };
+    loadSysInfo();
+  }, []);
+
+  const handleExportBackup = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch('/api/backup');
+      if (!res.ok) {
+        throw new Error('Erro ao exportar backup');
+      }
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get('Content-Disposition');
+      let filename = 'backup_pgr.json';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match) filename = match[1];
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: 'Backup exportado!', description: `Ficheiro: ${filename}` });
+    } catch {
+      toast({ title: 'Erro', description: 'Falha ao exportar backup.', variant: 'destructive' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (!restoreFile) {
+      toast({ title: 'Erro', description: 'Selecione um ficheiro de backup.', variant: 'destructive' });
+      return;
+    }
+    setRestoring(true);
+    setRestoreResult(null);
+    try {
+      const text = await restoreFile.text();
+      const json = JSON.parse(text);
+      const res = await fetch('/api/backup/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(json),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRestoreResult(data);
+        toast({ title: 'Backup restaurado!', description: `${data.restored.arguidos} arguidos, ${data.restored.alertas} alertas restaurados.` });
+      } else {
+        toast({ title: 'Erro', description: data.error || 'Falha ao restaurar backup.', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Erro', description: 'Ficheiro de backup inválido.', variant: 'destructive' });
+    } finally {
+      setRestoring(false);
+      setRestoreFile(null);
+      setRestoreDialogOpen(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-pgr-text dark:text-gray-100">Sistema</h2>
+          <p className="text-sm text-muted-foreground">Gestão de backup e informação do sistema</p>
+        </div>
+      </div>
+
+      {/* System Info */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-stone-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-pgr-text-muted font-medium">Total Arguidos</p>
+                <p className="text-2xl font-bold text-pgr-text dark:text-gray-100">{stats?.totalArguidos ?? '—'}</p>
+              </div>
+              <div className="w-10 h-10 bg-pgr-surface rounded-lg flex items-center justify-center">
+                <Users className="h-5 w-5 text-pgr-text-muted" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-teal-500">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-pgr-text-muted font-medium">Total Utilizadores</p>
+                <p className="text-2xl font-bold text-teal-600">{sysInfo?.totalUsers ?? '—'}</p>
+              </div>
+              <div className="w-10 h-10 bg-teal-500/10 rounded-lg flex items-center justify-center">
+                <UserCog className="h-5 w-5 text-teal-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-green-500">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-pgr-text-muted font-medium">Base de Dados</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {sysInfo?.dbStatus === 'online' ? 'Online' : 'Erro'}
+                </p>
+              </div>
+              <div className="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Backup Actions */}
+      <Card className="bg-pgr-surface border border-stone-200">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold text-pgr-text flex items-center gap-2">
+            <Shield className="h-4 w-4" /> Backup e Restauração
+          </CardTitle>
+          <CardDescription>Exportar ou restaurar dados do sistema</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              className="bg-pgr-primary text-white font-bold hover:opacity-90"
+              onClick={handleExportBackup}
+              disabled={exporting}
+            >
+              {exporting ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              {exporting ? 'A exportar...' : 'Exportar Backup Completo'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => { setRestoreDialogOpen(true); setRestoreResult(null); }}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Restaurar Backup
+            </Button>
+          </div>
+
+          {/* Warning */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-amber-800">
+              <strong>Atenção:</strong> A restauração irá sobrepor dados existentes. Certifique-se de ter um backup atualizado antes de prosseguir.
+            </p>
+          </div>
+
+          {/* Restore Results */}
+          {restoreResult && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-2">
+              <p className="text-sm font-semibold text-green-800">Restauração concluída com sucesso:</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-white rounded-md p-2 text-center">
+                  <p className="text-lg font-bold text-pgr-text dark:text-gray-100">{restoreResult.restored.arguidos}</p>
+                  <p className="text-xs text-pgr-text-muted">Arguidos</p>
+                </div>
+                <div className="bg-white rounded-md p-2 text-center">
+                  <p className="text-lg font-bold text-pgr-text dark:text-gray-100">{restoreResult.restored.alertas}</p>
+                  <p className="text-xs text-pgr-text-muted">Alertas</p>
+                </div>
+                <div className="bg-white rounded-md p-2 text-center">
+                  <p className="text-lg font-bold text-pgr-text dark:text-gray-100">{restoreResult.restored.auditLogs}</p>
+                  <p className="text-xs text-pgr-text-muted">Logs de Auditoria</p>
+                </div>
+                <div className="bg-white rounded-md p-2 text-center">
+                  <p className="text-lg font-bold text-pgr-text dark:text-gray-100">{restoreResult.restored.documents}</p>
+                  <p className="text-xs text-pgr-text-muted">Documentos</p>
+                </div>
+              </div>
+              {restoreResult.errors && restoreResult.errors.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-xs font-semibold text-amber-700">Erros ({restoreResult.errors.length}):</p>
+                  <ul className="text-xs text-amber-600 list-disc pl-4 mt-1 max-h-32 overflow-y-auto">
+                    {restoreResult.errors.map((err, i) => <li key={i}>{err}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Restore Dialog */}
+      <Dialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restaurar Backup</DialogTitle>
+            <DialogDescription>
+              Selecione o ficheiro JSON de backup para restaurar os dados do sistema.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="backup-file">Ficheiro de Backup (.json)</Label>
+              <Input
+                id="backup-file"
+                type="file"
+                accept=".json"
+                onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
+                className="mt-1"
+              />
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-amber-800">
+                A restauração irá sobrepor dados existentes. Esta ação não pode ser desfeita.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRestoreDialogOpen(false); setRestoreFile(null); }}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 text-white font-bold hover:bg-red-700"
+              onClick={handleRestoreBackup}
+              disabled={!restoreFile || restoring}
+            >
+              {restoring ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+              {restoring ? 'A restaurar...' : 'Restaurar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

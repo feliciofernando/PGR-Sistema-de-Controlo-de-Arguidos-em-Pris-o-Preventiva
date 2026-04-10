@@ -1,6 +1,80 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, toCamelCaseDeep, addMonthsToISO } from '@/lib/supabase';
 
+// Helper: create audit log entry
+async function createAuditLog(params: {
+  arguidoId: number;
+  action: string;
+  fieldChanged?: string | null;
+  oldValue?: string | null;
+  newValue?: string | null;
+  username?: string;
+}) {
+  try {
+    await supabase.from('audit_logs').insert({
+      arguido_id: params.arguidoId,
+      username: params.username || 'sistema',
+      action: params.action,
+      field_changed: params.fieldChanged || null,
+      old_value: params.oldValue || null,
+      new_value: params.newValue || null,
+    });
+  } catch (e) {
+    console.error('[Audit] Failed to write audit log:', e);
+  }
+}
+
+// CamelCase field to snake_case for DB comparison
+function camelToSnake(str: string): string {
+  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
+
+// CamelCase to readable label
+function fieldLabel(field: string): string {
+  const labels: Record<string, string> = {
+    numeroProcesso: 'Nº Processo',
+    nomeArguido: 'Nome do Arguido',
+    nomePai: 'Nome do Pai',
+    nomeMae: 'Nome da Mãe',
+    dataDetencao: 'Data de Detenção',
+    crime: 'Crime',
+    dataRemessaJg: 'Remessa ao JG',
+    dataRegresso: 'Data de Regresso',
+    medidasAplicadas: 'Medidas Aplicadas',
+    dataMedidasAplicadas: 'Data das Medidas',
+    dataRemessaSic: 'Remessa ao SIC',
+    fimPrimeiroPrazo: 'Fim 1º Prazo',
+    dataProrrogacao: 'Data de Prorrogação',
+    duracaoProrrogacao: 'Duração da Prorrogação',
+    fimSegundoPrazo: 'Fim 2º Prazo',
+    magistrado: 'Magistrado',
+    remessaJgAlteracao: 'Remessa JG / Alteração',
+    obs1: 'Observação 1',
+    obs2: 'Observação 2',
+    status: 'Status',
+  };
+  return labels[field] || field;
+}
+
+// Format a value for audit display
+function formatAuditValue(val: unknown): string {
+  if (val === null || val === undefined || val === '') return '—';
+  if (typeof val === 'number') return String(val);
+  if (typeof val === 'boolean') return val ? 'Sim' : 'Não';
+  const str = String(val);
+  // Truncate long strings
+  return str.length > 100 ? str.substring(0, 100) + '...' : str;
+}
+
+// Fields to track for audit (skip internal computed fields)
+const TRACKED_FIELDS = [
+  'numeroProcesso', 'nomeArguido', 'nomePai', 'nomeMae',
+  'dataDetencao', 'crime', 'dataRemessaJg', 'dataRegresso',
+  'medidasAplicadas', 'dataMedidasAplicadas', 'dataRemessaSic',
+  'dataProrrogacao', 'duracaoProrrogacao', 'magistrado',
+  'remessaJgAlteracao', 'obs1', 'obs2', 'status',
+];
+
 // GET /api/arguidos/[id] - Get single arguido with alerts
 export async function GET(
   request: NextRequest,
@@ -36,7 +110,7 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    // Get existing record to handle partial updates
+    // Get existing record to handle partial updates and audit diff
     const { data: existing } = await supabase
       .from('arguidos')
       .select('*')
@@ -98,6 +172,50 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Audit log: compare old vs new for each tracked field
+    for (const field of TRACKED_FIELDS) {
+      const dbField = camelToSnake(field);
+      const oldVal = existing[dbField as keyof typeof existing];
+      const newVal = updateData[dbField];
+
+      // Compare values (normalize for comparison)
+      const oldStr = formatAuditValue(oldVal);
+      const newStr = formatAuditValue(newVal);
+
+      if (oldStr !== newStr) {
+        await createAuditLog({
+          arguidoId: parseInt(id),
+          action: 'atualizacao',
+          fieldChanged: fieldLabel(field),
+          oldValue: oldStr,
+          newValue: newStr,
+          username: body.username || 'sistema',
+        });
+      }
+    }
+
+    // Also log computed deadline changes
+    if (formatAuditValue(existing.fim_primeiro_prazo) !== formatAuditValue(fimPrimeiroPrazo)) {
+      await createAuditLog({
+        arguidoId: parseInt(id),
+        action: 'atualizacao',
+        fieldChanged: 'Fim 1º Prazo (calculado)',
+        oldValue: formatAuditValue(existing.fim_primeiro_prazo),
+        newValue: formatAuditValue(fimPrimeiroPrazo),
+        username: body.username || 'sistema',
+      });
+    }
+    if (formatAuditValue(existing.fim_segundo_prazo) !== formatAuditValue(fimSegundoPrazo)) {
+      await createAuditLog({
+        arguidoId: parseInt(id),
+        action: 'atualizacao',
+        fieldChanged: 'Fim 2º Prazo (calculado)',
+        oldValue: formatAuditValue(existing.fim_segundo_prazo),
+        newValue: formatAuditValue(fimSegundoPrazo),
+        username: body.username || 'sistema',
+      });
+    }
+
     return NextResponse.json(toCamelCaseDeep(data));
   } catch (error) {
     console.error('Error updating arguido:', error);
@@ -113,6 +231,13 @@ export async function DELETE(
   try {
     const { id } = await params;
 
+    // Get existing record before delete for audit
+    const { data: existing } = await supabase
+      .from('arguidos')
+      .select('id, numero_id, nome_arguido, numero_processo')
+      .eq('id', id)
+      .single();
+
     const { error } = await supabase
       .from('arguidos')
       .delete()
@@ -121,6 +246,16 @@ export async function DELETE(
     if (error) {
       console.error('Supabase delete error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Audit log: removal
+    if (existing) {
+      await createAuditLog({
+        arguidoId: existing.id,
+        action: 'remocao',
+        newValue: `Arguido "${existing.nome_arguido}" (${existing.numero_id}) removido do sistema`,
+        username: 'sistema',
+      });
     }
 
     return NextResponse.json({ success: true });
