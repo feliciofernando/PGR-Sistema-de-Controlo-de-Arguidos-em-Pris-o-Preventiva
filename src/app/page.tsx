@@ -1241,11 +1241,11 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       // === Identificação ===
       let y = 36;
       doc.setTextColor(28, 25, 23); // #1c1917
-      doc.setFontSize(11);
+      doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
       doc.text(`ID: ${arguido.numeroId}  |  Processo Nº: ${arguido.numeroProcesso}`, margin, y);
-      y += 7;
-      doc.setFontSize(14);
+      y += 8;
+      doc.setFontSize(15);
       doc.text(arguido.nomeArguido, margin, y);
 
       // Status badge
@@ -1255,7 +1255,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         encerrado: [156, 163, 175],
       };
       const sc = statusColors[arguido.status] || [120, 120, 120];
-      doc.setFontSize(9);
+      doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       const statusLabel = arguido.status.charAt(0).toUpperCase() + arguido.status.slice(1);
       const statusTextW = doc.getTextWidth(statusLabel) + 8;
@@ -1268,7 +1268,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
       // === Dados Pessoais ===
       const sectionTitle = (title: string) => {
-        doc.setFontSize(10);
+        doc.setFontSize(11);
         doc.setTextColor(194, 65, 12);
         doc.setFont("helvetica", "bold");
         doc.text(title, margin, y);
@@ -1279,14 +1279,13 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       };
 
       const fieldRow = (label: string, value: string) => {
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(120, 113, 108); // #78716c
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(60, 55, 50); // escuro
         doc.text(label, margin, y);
         doc.setTextColor(28, 25, 23);
-        doc.setFont("helvetica", "bold");
         doc.text(value || "—", margin + 50, y);
-        y += 5.5;
+        y += 6.5;
       };
 
       sectionTitle("DADOS PESSOAIS E PROCESSUAIS");
@@ -1324,12 +1323,12 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         doc.setFillColor(dc[0], dc[1], dc[2]);
         doc.roundedRect(margin + yOffset, y, boxW, boxH, 2, 2, "F");
         doc.setTextColor(days === null ? 75 : 255, days === null ? 85 : 255, days === null ? 99 : 255);
-        doc.setFontSize(8);
+        doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.text(label, margin + yOffset + boxW / 2, y + 6, { align: "center" });
-        doc.setFontSize(9);
+        doc.setFontSize(10);
         doc.text(dateStr ? formatDate(dateStr) : "Não definido", margin + yOffset + boxW / 2, y + 12, { align: "center" });
-        doc.setFontSize(8);
+        doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
         doc.text(getDeadlineLabel(days), margin + yOffset + boxW / 2, y + 18, { align: "center" });
       };
@@ -1341,9 +1340,9 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       // === Observações ===
       if (arguido.remessaJgAlteracao || arguido.obs1 || arguido.obs2) {
         sectionTitle("OBSERVAÇÕES");
-        doc.setFontSize(8.5);
+        doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        doc.setTextColor(87, 83, 78);
+        doc.setTextColor(60, 55, 50);
         if (arguido.remessaJgAlteracao) {
           doc.setFont("helvetica", "bold");
           doc.text("Remessa JG / Alteração:", margin, y);
@@ -1390,7 +1389,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
             a.status_envio || "—",
           ]),
           theme: "grid",
-          styles: { fontSize: 7.5, cellPadding: 2 },
+          styles: { fontSize: 9, cellPadding: 2.5 },
           headStyles: { fillColor: [113, 113, 122], textColor: 255, fontStyle: "bold" },
           alternateRowStyles: { fillColor: [245, 245, 244] },
           margin: { left: margin, right: margin },
