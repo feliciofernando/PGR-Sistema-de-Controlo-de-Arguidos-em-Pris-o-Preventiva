@@ -530,16 +530,33 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
   const [loginLoading, setLoginLoading] = useState(false);
   const { toast } = useToast();
 
-  // Password recovery state
+  // Password recovery state (email-based with link)
   const [resetOpen, setResetOpen] = useState(false);
-  const [resetStep, setResetStep] = useState<'username' | 'newpass'>('username');
-  const [resetUsername, setResetUsername] = useState('');
-  const [resetVerified, setResetVerified] = useState(false);
-  const [resetNewPass, setResetNewPass] = useState('');
-  const [resetConfirmPass, setResetConfirmPass] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
-  const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
+
+  // Recovery link detection (from email)
+  const [recoveryToken, setRecoveryToken] = useState<string | null>(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoverySuccess, setRecoverySuccess] = useState(false);
+  const [recoveryNewPass, setRecoveryNewPass] = useState('');
+  const [recoveryConfirmPass, setRecoveryConfirmPass] = useState('');
+  const [recoveryError, setRecoveryError] = useState('');
+
+  // Detect recovery hash from email link on mount
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes('type=recovery')) {
+      const params = new URLSearchParams(hash.substring(1));
+      const accessToken = params.get('access_token');
+      if (accessToken) {
+        setRecoveryToken(accessToken);
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -564,39 +581,11 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
     }
   };
 
-  const handleResetStep1 = async (e: React.FormEvent) => {
+  const handleResetRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setResetError('');
-    setResetLoading(true);
-    try {
-      const res = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'verify', username: resetUsername }),
-      });
-      const data = await res.json();
-      if (res.ok && data.exists) {
-        setResetVerified(true);
-        setResetStep('newpass');
-      } else {
-        setResetError(data.error || 'Utilizador não encontrado');
-      }
-    } catch {
-      setResetError('Erro de ligação ao servidor');
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
-  const handleResetStep2 = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setResetError('');
-    if (!resetNewPass || resetNewPass.length < 6) {
-      setResetError('A senha deve ter pelo menos 6 caracteres');
-      return;
-    }
-    if (resetNewPass !== resetConfirmPass) {
-      setResetError('As senhas não coincidem');
+    if (!resetEmail) {
+      setResetError('Email é obrigatório');
       return;
     }
     setResetLoading(true);
@@ -604,20 +593,13 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reset', username: resetUsername, newPassword: resetNewPass }),
+        body: JSON.stringify({ email: resetEmail }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setResetSuccess(true);
-        setResetOpen(false);
-        setResetUsername('');
-        setResetNewPass('');
-        setResetConfirmPass('');
-        setResetVerified(false);
-        setResetStep('username');
-        toast({ title: 'Senha alterada!', description: 'Pode agora entrar com a nova senha.' });
+        setResetEmailSent(true);
       } else {
-        setResetError(data.error || 'Falha ao alterar senha');
+        setResetError(data.error || 'Falha ao enviar email');
       }
     } catch {
       setResetError('Erro de ligação ao servidor');
@@ -628,13 +610,47 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
 
   const openReset = () => {
     setResetOpen(true);
-    setResetStep('username');
-    setResetUsername('');
-    setResetVerified(false);
-    setResetNewPass('');
-    setResetConfirmPass('');
+    setResetEmail('');
     setResetError('');
-    setResetSuccess(false);
+    setResetEmailSent(false);
+  };
+
+  const handleRecoverySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryError('');
+    if (!recoveryNewPass || recoveryNewPass.length < 6) {
+      setRecoveryError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+    if (recoveryNewPass !== recoveryConfirmPass) {
+      setRecoveryError('As senhas não coincidem');
+      return;
+    }
+    setRecoveryLoading(true);
+    try {
+      const res = await fetch('/api/auth/update-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: recoveryToken, new_password: recoveryNewPass }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRecoverySuccess(true);
+        toast({ title: 'Senha alterada!', description: 'Pode agora fazer login com a nova senha.' });
+        setTimeout(() => {
+          setRecoveryToken(null);
+          setRecoverySuccess(false);
+          setRecoveryNewPass('');
+          setRecoveryConfirmPass('');
+        }, 4000);
+      } else {
+        setRecoveryError(data.error || 'Falha ao alterar senha');
+      }
+    } catch {
+      setRecoveryError('Erro de ligação ao servidor');
+    } finally {
+      setRecoveryLoading(false);
+    }
   };
 
   return (
@@ -676,10 +692,10 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
                   {loginError}
                 </div>
               )}
-              {resetSuccess && (
+              {recoverySuccess && (
                 <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                  Senha alterada com sucesso! Pode entrar agora.
+                  Senha alterada com sucesso! Pode agora entrar.
                 </div>
               )}
               <div className="space-y-2">
@@ -742,22 +758,36 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
           </CardContent>
         </Card>
 
-        {/* Password Reset Dialog */}
+        {/* Password Reset Dialog — Email-based recovery link */}
         <Dialog open={resetOpen} onOpenChange={(open) => { if (!open) setResetOpen(false); }}>
           <DialogContent className="max-w-sm border-stone-200 text-gray-900">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Lock className="h-5 w-5 text-pgr-primary" />
-                {resetStep === 'username' ? 'Recuperar Senha' : 'Definir Nova Senha'}
+                {resetEmailSent ? 'Email Enviado' : 'Recuperar Senha'}
               </DialogTitle>
               <DialogDescription>
-                {resetStep === 'username'
-                  ? 'Introduza o seu nome de utilizador para verificar a conta.'
-                  : 'Defina a sua nova senha de acesso.'}
+                {resetEmailSent
+                  ? 'Enviamos um link para o seu email. Verifique a caixa de entrada.'
+                  : 'Introduza o seu email para receber o link de recuperação.'}
               </DialogDescription>
             </DialogHeader>
-            {resetStep === 'username' ? (
-              <form onSubmit={handleResetStep1} className="space-y-4">
+            {resetEmailSent ? (
+              <div className="space-y-4">
+                <div className="text-center py-4">
+                  <div className="w-14 h-14 mx-auto mb-3 bg-green-100 rounded-full flex items-center justify-center">
+                    <Mail className="h-7 w-7 text-green-600" />
+                  </div>
+                  <p className="text-sm text-gray-600 font-medium">Verifique a sua caixa de entrada</p>
+                  <p className="text-xs text-gray-400 mt-1">Clique no link enviado para <strong>{resetEmail}</strong></p>
+                  <p className="text-[11px] text-gray-400 mt-2">O link é válido por 1 hora. Verifique também o spam.</p>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" size="sm" onClick={() => setResetOpen(false)}>Fechar</Button>
+                </DialogFooter>
+              </div>
+            ) : (
+              <form onSubmit={handleResetRequest} className="space-y-4">
                 {resetError && (
                   <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -765,11 +795,12 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
                   </div>
                 )}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Utilizador</Label>
+                  <Label className="text-xs font-semibold">Email</Label>
                   <Input
-                    placeholder="nome.utilizador"
-                    value={resetUsername}
-                    onChange={(e) => setResetUsername(e.target.value.toLowerCase().trim())}
+                    type="email"
+                    placeholder="seu.email@exemplo.com"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value.trim())}
                     className="text-sm bg-stone-100 border-stone-200"
                     autoFocus
                     required
@@ -781,63 +812,75 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
                     size="sm"
                     className="bg-pgr-primary text-white font-bold hover:opacity-90"
                     type="submit"
-                    disabled={resetLoading || !resetUsername}
+                    disabled={resetLoading || !resetEmail}
                   >
-                    {resetLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Verificar'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            ) : (
-              <form onSubmit={handleResetStep2} className="space-y-4">
-                {resetError && (
-                  <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                    {resetError}
-                  </div>
-                )}
-                <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                  Conta verificada: <strong>{resetUsername}</strong>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Nova Senha</Label>
-                  <Input
-                    type="password"
-                    placeholder="Mínimo 6 caracteres"
-                    value={resetNewPass}
-                    onChange={(e) => setResetNewPass(e.target.value)}
-                    className="text-sm bg-stone-100 border-stone-200"
-                    autoFocus
-                    required
-                    minLength={6}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Confirmar Nova Senha</Label>
-                  <Input
-                    type="password"
-                    placeholder="Repita a nova senha"
-                    value={resetConfirmPass}
-                    onChange={(e) => setResetConfirmPass(e.target.value)}
-                    className="text-sm bg-stone-100 border-stone-200"
-                    required
-                  />
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" size="sm" type="button" onClick={() => { setResetStep('username'); setResetVerified(false); }}>Voltar</Button>
-                  <Button
-                    size="sm"
-                    className="bg-pgr-primary text-white font-bold hover:opacity-90"
-                    type="submit"
-                    disabled={resetLoading || !resetNewPass || !resetConfirmPass}
-                  >
-                    {resetLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Alterar Senha'}
+                    {resetLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <><Mail className="h-4 w-4 mr-1" />Enviar Link</>}
                   </Button>
                 </DialogFooter>
               </form>
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Recovery Password Form — shown when user clicks email link */}
+        {recoveryToken && !recoverySuccess && (
+          <Card className="shadow-2xl bg-white/[0.97] backdrop-blur-sm border border-white/30 mt-4">
+            <CardHeader className="text-center pb-2">
+              <div className="mx-auto w-14 h-14 bg-pgr-primary rounded-full flex items-center justify-center mb-3">
+                <Lock className="h-7 w-7 text-white" />
+              </div>
+              <CardTitle className="text-lg font-bold text-gray-900">Redefinir Senha</CardTitle>
+              <CardDescription className="text-sm text-gray-500">Defina a sua nova senha de acesso</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <form onSubmit={handleRecoverySubmit} className="space-y-4">
+                {recoveryError && (
+                  <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    {recoveryError}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Nova Senha</Label>
+                  <Input
+                    type="password"
+                    placeholder="Mínimo 6 caracteres"
+                    value={recoveryNewPass}
+                    onChange={(e) => setRecoveryNewPass(e.target.value)}
+                    className="h-11 bg-stone-100 text-gray-900 border-stone-200"
+                    autoFocus
+                    minLength={6}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Confirmar Nova Senha</Label>
+                  <Input
+                    type="password"
+                    placeholder="Repita a nova senha"
+                    value={recoveryConfirmPass}
+                    onChange={(e) => setRecoveryConfirmPass(e.target.value)}
+                    className="h-11 bg-stone-100 text-gray-900 border-stone-200"
+                    minLength={6}
+                    required
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full h-11 bg-pgr-primary text-white font-bold text-sm hover:opacity-90"
+                  disabled={recoveryLoading || !recoveryNewPass || !recoveryConfirmPass}
+                >
+                  {recoveryLoading ? (
+                    <span className="flex items-center gap-2">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      A alterar...
+                    </span>
+                  ) : 'Redefinir Senha'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
@@ -4299,6 +4342,7 @@ function UtilizadoresView() {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newNome, setNewNome] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState('operador');
   const [creating, setCreating] = useState(false);
 
@@ -4367,7 +4411,7 @@ function UtilizadoresView() {
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: newUsername, password: newPassword, nome: newNome, role: newRole }),
+        body: JSON.stringify({ username: newUsername, password: newPassword, nome: newNome, role: newRole, email: newEmail }),
       });
       if (res.ok) {
         toast({ title: "Utilizador criado", description: `${newNome} (${newUsername}) criado com sucesso.` });
@@ -4375,6 +4419,7 @@ function UtilizadoresView() {
         setNewUsername('');
         setNewPassword('');
         setNewNome('');
+        setNewEmail('');
         setNewRole('operador');
         loadUsers();
       } else {
@@ -4525,6 +4570,16 @@ function UtilizadoresView() {
                 placeholder="Nome completo do utilizador"
                 value={newNome}
                 onChange={(e) => setNewNome(e.target.value)}
+                className="text-sm bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary placeholder:text-stone-400 dark:placeholder:text-gray-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Email <span className="text-gray-400 font-normal">(para recuperação de senha)</span></Label>
+              <Input
+                type="email"
+                placeholder="seu.email@exemplo.com"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value.trim())}
                 className="text-sm bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary placeholder:text-stone-400 dark:placeholder:text-gray-500"
               />
             </div>

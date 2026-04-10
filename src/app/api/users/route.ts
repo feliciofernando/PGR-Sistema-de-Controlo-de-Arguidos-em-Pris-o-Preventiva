@@ -25,7 +25,7 @@ export async function GET() {
 // POST /api/users — Create a new user (admin only)
 export async function POST(request: NextRequest) {
   try {
-    const { username, password, nome, role } = await request.json();
+    const { username, password, nome, role, email } = await request.json();
 
     if (!username || !password || !nome) {
       return NextResponse.json({ error: 'Username, password, and nome are required' }, { status: 400 });
@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanUsername = username.toLowerCase().trim();
+    const cleanEmail = email ? email.toLowerCase().trim() : null;
 
     // Check if username exists
     const { data: existing } = await supabase
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
         nome: nome.trim(),
         role: role || 'operador',
         ativo: true,
+        ...(cleanEmail ? { email: cleanEmail } : {}),
       })
       .select('id, username, nome, role, ativo, created_at')
       .single();
@@ -66,6 +68,26 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Supabase insert error:', error);
       return NextResponse.json({ error: 'Failed to create user: ' + error.message }, { status: 500 });
+    }
+
+    // Sync with Supabase Auth if email provided (for password recovery)
+    if (cleanEmail) {
+      try {
+        const { data: authUsers } = await supabase.auth.admin.listUsers({
+          filters: { email: cleanEmail },
+        });
+        if (!authUsers?.users || authUsers.users.length === 0) {
+          await supabase.auth.admin.createUser({
+            email: cleanEmail,
+            password,
+            email_confirm: true,
+            user_metadata: { username: cleanUsername, nome: nome.trim(), managed_by: 'system_users' },
+          });
+          console.log(`[Users] Created Supabase Auth user for ${cleanEmail}`);
+        }
+      } catch (authErr) {
+        console.warn('[Users] Could not sync Supabase Auth user (non-critical):', authErr);
+      }
     }
 
     return NextResponse.json(toCamelCaseDeep(data), { status: 201 });

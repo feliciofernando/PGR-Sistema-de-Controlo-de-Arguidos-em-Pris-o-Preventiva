@@ -1,216 +1,162 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import bcrypt from 'bcryptjs';
 import { isEmailConfigured, sendEmail } from '@/lib/email';
 
 // POST /api/auth/reset-password
-// Step 1: { action: 'request', username: '...' } — verify user & send email confirmation
-// Step 2: { action: 'verify', username: '...' } — check if user exists (fallback)
-// Step 3: { action: 'reset', username: '...', newPassword: '...' } — change password
+// Sends a recovery email with a secure Supabase Auth link
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { action, username, newPassword } = body;
+    const { email } = await request.json();
 
-    if (!action || !username) {
-      return NextResponse.json({ error: 'Ação e username são obrigatórios' }, { status: 400 });
+    if (!email) {
+      return NextResponse.json({ error: 'Email é obrigatório' }, { status: 400 });
     }
 
-    const cleanUsername = username.toLowerCase().trim();
+    const cleanEmail = email.toLowerCase().trim();
 
-    if (action === 'request') {
-      // Request password reset — verify user and send confirmation email
-      // Try with email field first, fallback without if column doesn't exist
-      let userEmail: string | null = null;
-      const { data: user, error } = await supabase
+    // 1. Look up user in system_users by email
+    let userFound = false;
+    let userName = '';
+    let userEmail = '';
+
+    // Try with email column first
+    const { data: user, error } = await supabase
+      .from('system_users')
+      .select('id, username, nome, email, ativo')
+      .eq('email', cleanEmail)
+      .single();
+
+    if (!error && user) {
+      userName = user.nome;
+      userEmail = user.email || cleanEmail;
+      userFound = true;
+    } else {
+      // Fallback: try matching by username (if user typed username instead of email)
+      const { data: fallbackUser, error: fbErr } = await supabase
         .from('system_users')
         .select('id, username, nome, email, ativo')
-        .eq('username', cleanUsername)
+        .eq('username', cleanEmail)
         .single();
 
-      // If error (e.g. email column missing), try without email
-      let userName = '';
-      let userActive = false;
-      let userFound = false;
-
-      if (!error && user) {
-        userName = user.nome;
-        userActive = !!user.ativo;
-        userEmail = user.email || null;
+      if (!fbErr && fallbackUser) {
+        userName = fallbackUser.nome;
+        userEmail = fallbackUser.email || '';
         userFound = true;
-      } else {
-        const { data: fallbackUser, error: fbError } = await supabase
-          .from('system_users')
-          .select('id, username, nome, ativo')
-          .eq('username', cleanUsername)
-          .single();
-
-        if (!fbError && fallbackUser) {
-          userName = fallbackUser.nome;
-          userActive = !!fallbackUser.ativo;
-          userFound = true;
-        }
       }
+    }
 
-      if (!userFound) {
-        return NextResponse.json({
-          success: true,
-          message: 'Se o utilizador existir, receberá um email com instruções.',
-        });
-      }
-
-      if (!userActive) {
-        return NextResponse.json({
-          success: true,
-          message: 'Se o utilizador existir, receberá um email com instruções.',
-        });
-      }
-
-      // Try to send email notification (non-blocking)
-      if (isEmailConfigured() && userEmail) {
-        const html = `
-<!DOCTYPE html>
-<html><body style="font-family:Arial,sans-serif;padding:20px;">
-  <div style="max-width:600px;margin:0 auto;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-    <div style="background:#c2410c;padding:20px 30px;">
-      <h1 style="color:white;margin:0;">🔒 Recuperação de Senha</h1>
-      <p style="color:rgba(255,255,255,0.8);margin:5px 0 0 0;font-size:13px;">PGR Angola — Sistema de Controlo de Arguidos</p>
-    </div>
-    <div style="padding:20px 30px;">
-      <p>Olá <strong>${userName}</strong>,</p>
-      <p>Foi solicitada a recuperação da senha da sua conta (<strong>${cleanUsername}</strong>).</p>
-      <p>Para prosseguir, abra o sistema e utilize a opção <strong>"Esqueceu a senha?"</strong> na página de login para definir uma nova senha.</p>
-      <p style="color:#888;font-size:12px;margin-top:20px;">Se não solicitou esta alteração, ignore este email. A sua senha permanecerá inalterada.</p>
-      <p style="color:#888;font-size:12px;">Enviado em: ${new Date().toLocaleString('pt-AO')}</p>
-    </div>
-  </div>
-</body></html>`;
-
-        await sendEmail({
-          to: userEmail,
-          subject: '🔒 PGR Angola — Recuperação de Senha Solicitada',
-          html,
-        });
-      }
-
+    // Security: always return success to prevent user enumeration
+    if (!userFound) {
       return NextResponse.json({
-        exists: true,
-        nome: userName,
-        message: isEmailConfigured() && userEmail
-          ? 'Email de confirmação enviado. Verifique a sua caixa de entrada.'
-          : 'Conta verificada. Pode agora definir a nova senha.',
+        success: true,
+        message: 'Se este email estiver registado, receberá um link de recuperação.',
       });
     }
 
-    if (action === 'verify') {
-      // Check if user exists and is active (backward compatibility)
-      const { data: user, error } = await supabase
-        .from('system_users')
-        .select('id, username, nome, ativo')
-        .eq('username', cleanUsername)
-        .single();
-
-      if (error || !user) {
-        return NextResponse.json({ exists: false, error: 'Utilizador não encontrado' }, { status: 404 });
-      }
-
-      if (!user.ativo) {
-        return NextResponse.json({ exists: false, error: 'Conta desativada. Contacte o administrador.' }, { status: 403 });
-      }
-
-      return NextResponse.json({ exists: true, nome: user.nome });
+    if (!userEmail) {
+      return NextResponse.json({
+        success: true,
+        message: 'Este utilizador não tem email configurado. Contacte o administrador.',
+      });
     }
 
-    if (action === 'reset') {
-      if (!newPassword || newPassword.length < 6) {
-        return NextResponse.json({ error: 'A nova senha deve ter pelo menos 6 caracteres' }, { status: 400 });
+    // Check email configuration
+    if (!isEmailConfigured()) {
+      return NextResponse.json({
+        success: false,
+        error: 'Email não configurado. Contacte o administrador do sistema.',
+      });
+    }
+
+    // 2. Ensure user exists in Supabase Auth (for token generation)
+    try {
+      const { data: authUsers } = await supabase.auth.admin.listUsers({
+        filters: { email: userEmail },
+      });
+
+      if (!authUsers?.users || authUsers.users.length === 0) {
+        // Create user in Supabase Auth with random password (not used for login)
+        const randomPassword = crypto.randomUUID() + crypto.randomUUID();
+        await supabase.auth.admin.createUser({
+          email: userEmail,
+          password: randomPassword,
+          email_confirm: true,
+          user_metadata: { nome: userName, managed_by: 'system_users' },
+        });
+        console.log(`[Auth] Created Supabase Auth user for ${userEmail}`);
       }
+    } catch (authErr) {
+      console.error('[Auth] Error syncing Supabase Auth user:', authErr);
+      // Continue anyway — the link generation might still work
+    }
 
-      // Verify user exists and is active — try with email column, fallback without
-      let resetUserEmail: string | null = null;
-      const { data: user, error: fetchError } = await supabase
-        .from('system_users')
-        .select('id, ativo, nome, email')
-        .eq('username', cleanUsername)
-        .single();
+    // 3. Generate recovery link via Supabase Auth Admin API
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-      let resetUserId: number | null = null;
-      let resetUserName = '';
-      let resetUserActive = false;
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: 'recovery',
+      email: userEmail,
+      redirectTo: siteUrl,
+    });
 
-      if (!fetchError && user) {
-        resetUserId = user.id;
-        resetUserName = user.nome;
-        resetUserActive = !!user.ativo;
-        resetUserEmail = user.email || null;
-      } else {
-        const { data: fbUser, error: fbErr } = await supabase
-          .from('system_users')
-          .select('id, ativo, nome')
-          .eq('username', cleanUsername)
-          .single();
-        if (!fbErr && fbUser) {
-          resetUserId = fbUser.id;
-          resetUserName = fbUser.nome;
-          resetUserActive = !!fbUser.ativo;
-        }
-      }
+    if (linkError || !linkData?.action_link) {
+      console.error('[Auth] Generate link error:', linkError);
+      return NextResponse.json({
+        success: false,
+        error: 'Falha ao gerar link de recuperação. Tente novamente.',
+      });
+    }
 
-      if (!resetUserId) {
-        return NextResponse.json({ error: 'Utilizador não encontrado' }, { status: 404 });
-      }
-
-      if (!resetUserActive) {
-        return NextResponse.json({ error: 'Conta desativada. Contacte o administrador.' }, { status: 403 });
-      }
-
-      // Hash new password and update
-      const passwordHash = await bcrypt.hash(newPassword, 12);
-
-      const { error: updateError } = await supabase
-        .from('system_users')
-        .update({
-          password_hash: passwordHash,
-          ultimo_login: new Date().toISOString(),
-        })
-        .eq('id', resetUserId);
-
-      if (updateError) {
-        console.error('Password reset error:', updateError);
-        return NextResponse.json({ error: 'Falha ao alterar senha' }, { status: 500 });
-      }
-
-      // Send password changed notification email (non-blocking)
-      if (isEmailConfigured() && resetUserEmail) {
-        const html = `
+    // 4. Send email via Gmail SMTP (nodemailer)
+    const recoveryLink = linkData.action_link;
+    const html = `
 <!DOCTYPE html>
-<html><body style="font-family:Arial,sans-serif;padding:20px;">
+<html><body style="font-family:Arial,sans-serif;padding:20px;margin:0;background:#f5f5f5;">
   <div style="max-width:600px;margin:0 auto;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-    <div style="background:#16a34a;padding:20px 30px;">
-      <h1 style="color:white;margin:0;">✅ Senha Alterada com Sucesso</h1>
+    <div style="background:#c2410c;padding:20px 30px;">
+      <h1 style="color:white;margin:0;font-size:22px;">🔒 Recuperação de Senha</h1>
+      <p style="color:rgba(255,255,255,0.8);margin:5px 0 0 0;font-size:13px;">PGR Angola — Sistema de Controlo de Arguidos em Prisão Preventiva</p>
     </div>
-    <div style="padding:20px 30px;">
-      <p>Olá <strong>${resetUserName}</strong>,</p>
-      <p>A senha da sua conta (<strong>${cleanUsername}</strong>) foi alterada com sucesso no Sistema de Controlo de Arguidos em Prisão Preventiva da PGR Angola.</p>
-      <p style="color:#888;font-size:12px;margin-top:20px;">Se não fez esta alteração, contacte imediatamente o administrador do sistema.</p>
-      <p style="color:#888;font-size:12px;">Enviado em: ${new Date().toLocaleString('pt-AO')}</p>
+    <div style="padding:25px 30px;">
+      <p>Olá <strong>${userName}</strong>,</p>
+      <p>Recebemos um pedido de recuperação de senha para a sua conta no Sistema de Controlo de Arguidos.</p>
+      <p>Clique no botão abaixo para definir uma nova senha:</p>
+      <div style="text-align:center;margin:30px 0;">
+        <a href="${recoveryLink}" style="background:#c2410c;color:white;padding:14px 40px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:16px;display:inline-block;">
+          🔑 Redefinir Minha Senha
+        </a>
+      </div>
+      <p style="color:#888;font-size:12px;">Se o botão não funcionar, copie e cole este link no seu navegador:</p>
+      <p style="color:#c2410c;font-size:11px;word-break:break-all;">${recoveryLink}</p>
+      <div style="margin-top:25px;padding-top:15px;border-top:1px solid #eee;">
+        <p style="color:#888;font-size:11px;">Este link é válido por <strong>1 hora</strong>. Após esse prazo, será necessário solicitar um novo link.</p>
+        <p style="color:#888;font-size:11px;">Se não solicitou esta alteração, ignore este email. A sua senha permanecerá inalterada.</p>
+        <p style="color:#aaa;font-size:10px;margin-top:10px;">Enviado em: ${new Date().toLocaleString('pt-AO', { timeZone: 'Africa/Luanda' })}</p>
+      </div>
     </div>
   </div>
 </body></html>`;
 
-        await sendEmail({
-          to: resetUserEmail,
-          subject: '✅ PGR Angola — Senha Alterada com Sucesso',
-          html,
-        });
-      }
+    const result = await sendEmail({
+      to: userEmail,
+      subject: '🔒 PGR Angola — Recuperação de Senha',
+      html,
+    });
 
-      return NextResponse.json({ success: true, message: 'Senha alterada com sucesso' });
+    if (result.success) {
+      return NextResponse.json({
+        success: true,
+        message: 'Email de recuperação enviado com sucesso.',
+      });
     }
 
-    return NextResponse.json({ error: 'Ação inválida' }, { status: 400 });
+    console.error('[Auth] Email send error:', result.error);
+    return NextResponse.json({
+      success: false,
+      error: 'Falha ao enviar o email. Verifique a configuração SMTP.',
+    });
   } catch (error) {
-    console.error('Reset password error:', error);
+    console.error('[Auth] Reset password error:', error);
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
   }
 }
