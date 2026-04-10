@@ -1453,10 +1453,10 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     <TooltipProvider>
       <div className="min-h-screen flex flex-col">
         {/* HEADER + NAVBAR */}
-        <header className="sticky top-0 z-50 bg-white border-b border-stone-200 shadow-sm">
+        <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-stone-200/80 shadow-sm">
           <nav className="flex items-center">
             {/* Desktop Nav */}
-            <div className="hidden md:flex items-center justify-center flex-1">
+            <div className="hidden md:flex items-center gap-1 flex-1 px-3 py-1.5">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeView === item.id;
@@ -1464,16 +1464,16 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   <button
                     key={item.id}
                     onClick={() => setActiveView(item.id)}
-                    className={`relative flex items-center gap-2.5 px-6 py-4 text-[15px] font-semibold transition-colors border-b-[3px] rounded-lg
+                    className={`relative flex items-center gap-2 px-4 py-2 text-[13px] font-medium rounded-lg transition-all duration-200
                       ${isActive
-                        ? "bg-pgr-primary text-white shadow-lg border-transparent"
-                        : " text-pgr-text hover:text-pgr-text border-transparent hover:bg-stone-100"
+                        ? "bg-stone-900 text-white shadow-md"
+                        : "text-stone-500 hover:text-stone-800 hover:bg-stone-100/80"
                       }`}
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className="h-4 w-4" />
                     {item.label}
                     {item.id === "alertas" && urgentCount > 0 && (
-                      <span className="absolute -top-0.5 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                      <span className="ml-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
                         {urgentCount}
                       </span>
                     )}
@@ -1787,11 +1787,11 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
             />
             {/* Notification Card */}
             <div
-              className="relative pointer-events-auto w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden bg-stone-100 border border-pgr-primary/30"
+              className="relative pointer-events-auto w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden bg-white border border-stone-200"
               style={{ animation: 'slideInAppNotification 0.4s ease-out' }}
             >
               {/* Header — PGR Angola branding */}
-              <div className="bg-pgr-primary px-5 py-4">
+              <div className="bg-stone-800 px-5 py-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center backdrop-blur-sm">
                     <Scale className="h-5 w-5 text-white" />
@@ -1810,7 +1810,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 </div>
               )}
               {!inAppNotification.hasUrgent && (
-                <div className="h-1 bg-amber-400" />
+                <div className="h-1 bg-stone-300" />
               )}
 
               {/* Summary Rows */}
@@ -1830,17 +1830,17 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 </div>
 
                 {/* Críticos */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-orange-50 border border-pgr-primary/20">
-                  <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
-                    <AlertTriangle className="h-4.5 w-4.5 text-pgr-primary" />
+                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 border border-amber-200">
+                  <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle className="h-4.5 w-4.5 text-amber-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-pgr-primary">
+                    <p className="text-sm font-semibold text-amber-700">
                       {inAppNotification.criticos} Caso(s) Crítico(s)
                     </p>
-                    <p className="text-[11px] text-pgr-primary">Prazo muito próximo</p>
+                    <p className="text-[11px] text-amber-500">Prazo muito próximo</p>
                   </div>
-                  <span className="text-xl font-bold text-pgr-primary">{inAppNotification.criticos}</span>
+                  <span className="text-xl font-bold text-amber-600">{inAppNotification.criticos}</span>
                 </div>
 
                 {/* Atenção */}
@@ -1888,7 +1888,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   className={`flex-1 text-white text-sm font-semibold ${
                     inAppNotification.hasUrgent
                       ? 'bg-red-600 hover:bg-red-700'
-                      : 'bg-pgr-primary hover:opacity-90'
+                      : 'bg-stone-800 hover:bg-stone-700'
                   }`}
                   onClick={() => {
                     setInAppNotification(null);
