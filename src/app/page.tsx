@@ -57,6 +57,8 @@ import {
   Settings,
   Lock,
   Unlock,
+  Mail,
+  Info,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -530,6 +532,17 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
   const [loginLoading, setLoginLoading] = useState(false);
   const { toast } = useToast();
 
+  // Password recovery state
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetStep, setResetStep] = useState<'username' | 'newpass'>('username');
+  const [resetUsername, setResetUsername] = useState('');
+  const [resetVerified, setResetVerified] = useState(false);
+  const [resetNewPass, setResetNewPass] = useState('');
+  const [resetConfirmPass, setResetConfirmPass] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -551,6 +564,79 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
     } finally {
       setLoginLoading(false);
     }
+  };
+
+  const handleResetStep1 = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError('');
+    setResetLoading(true);
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify', username: resetUsername }),
+      });
+      const data = await res.json();
+      if (res.ok && data.exists) {
+        setResetVerified(true);
+        setResetStep('newpass');
+      } else {
+        setResetError(data.error || 'Utilizador não encontrado');
+      }
+    } catch {
+      setResetError('Erro de ligação ao servidor');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleResetStep2 = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError('');
+    if (!resetNewPass || resetNewPass.length < 6) {
+      setResetError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+    if (resetNewPass !== resetConfirmPass) {
+      setResetError('As senhas não coincidem');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset', username: resetUsername, newPassword: resetNewPass }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setResetSuccess(true);
+        setResetOpen(false);
+        setResetUsername('');
+        setResetNewPass('');
+        setResetConfirmPass('');
+        setResetVerified(false);
+        setResetStep('username');
+        toast({ title: 'Senha alterada!', description: 'Pode agora entrar com a nova senha.' });
+      } else {
+        setResetError(data.error || 'Falha ao alterar senha');
+      }
+    } catch {
+      setResetError('Erro de ligação ao servidor');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const openReset = () => {
+    setResetOpen(true);
+    setResetStep('username');
+    setResetUsername('');
+    setResetVerified(false);
+    setResetNewPass('');
+    setResetConfirmPass('');
+    setResetError('');
+    setResetSuccess(false);
   };
 
   return (
@@ -590,6 +676,12 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
                 <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
                   {loginError}
+                </div>
+              )}
+              {resetSuccess && (
+                <div className="bg-green-50 border border-green-200 text-green-600 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                  Senha alterada com sucesso! Pode entrar agora.
                 </div>
               )}
               <div className="space-y-2">
@@ -634,11 +726,120 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
                 )}
               </Button>
             </form>
-            <p className="text-[11px] text-gray-400 text-center mt-6">
+
+            {/* Forgot Password Link */}
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={openReset}
+                className="text-xs text-pgr-primary hover:underline cursor-pointer font-medium"
+              >
+                Esqueceu a senha?
+              </button>
+            </div>
+
+            <p className="text-[11px] text-gray-400 text-center mt-4">
               Acesso restrito e monitorizado — Procuradoria-Geral da República de Angola
             </p>
           </CardContent>
         </Card>
+
+        {/* Password Reset Dialog */}
+        <Dialog open={resetOpen} onOpenChange={(open) => { if (!open) setResetOpen(false); }}>
+          <DialogContent className="max-w-sm border-stone-200 text-gray-900">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Lock className="h-5 w-5 text-pgr-primary" />
+                {resetStep === 'username' ? 'Recuperar Senha' : 'Definir Nova Senha'}
+              </DialogTitle>
+              <DialogDescription>
+                {resetStep === 'username'
+                  ? 'Introduza o seu nome de utilizador para verificar a conta.'
+                  : 'Defina a sua nova senha de acesso.'}
+              </DialogDescription>
+            </DialogHeader>
+            {resetStep === 'username' ? (
+              <form onSubmit={handleResetStep1} className="space-y-4">
+                {resetError && (
+                  <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    {resetError}
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Utilizador</Label>
+                  <Input
+                    placeholder="nome.utilizador"
+                    value={resetUsername}
+                    onChange={(e) => setResetUsername(e.target.value.toLowerCase().trim())}
+                    className="text-sm bg-stone-100 border-stone-200"
+                    autoFocus
+                    required
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" size="sm" type="button" onClick={() => setResetOpen(false)}>Cancelar</Button>
+                  <Button
+                    size="sm"
+                    className="bg-pgr-primary text-white font-bold hover:opacity-90"
+                    type="submit"
+                    disabled={resetLoading || !resetUsername}
+                  >
+                    {resetLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Verificar'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            ) : (
+              <form onSubmit={handleResetStep2} className="space-y-4">
+                {resetError && (
+                  <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    {resetError}
+                  </div>
+                )}
+                <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                  Conta verificada: <strong>{resetUsername}</strong>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Nova Senha</Label>
+                  <Input
+                    type="password"
+                    placeholder="Mínimo 6 caracteres"
+                    value={resetNewPass}
+                    onChange={(e) => setResetNewPass(e.target.value)}
+                    className="text-sm bg-stone-100 border-stone-200"
+                    autoFocus
+                    required
+                    minLength={6}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Confirmar Nova Senha</Label>
+                  <Input
+                    type="password"
+                    placeholder="Repita a nova senha"
+                    value={resetConfirmPass}
+                    onChange={(e) => setResetConfirmPass(e.target.value)}
+                    className="text-sm bg-stone-100 border-stone-200"
+                    required
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" size="sm" type="button" onClick={() => { setResetStep('username'); setResetVerified(false); }}>Voltar</Button>
+                  <Button
+                    size="sm"
+                    className="bg-pgr-primary text-white font-bold hover:opacity-90"
+                    type="submit"
+                    disabled={resetLoading || !resetNewPass || !resetConfirmPass}
+                  >
+                    {resetLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Alterar Senha'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
@@ -5067,6 +5268,70 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Email Notifications Section */}
+      <Card className="bg-pgr-surface border border-stone-200">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold text-pgr-text flex items-center gap-2">
+            <Bell className="h-4 w-4" /> Notificações por Email
+          </CardTitle>
+          <CardDescription>Configure alertas automáticos por email para prazos processuais</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+            <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-blue-800">
+              <p className="font-medium">Configuração necessária</p>
+              <p className="text-xs mt-1">Adicione as variáveis de ambiente para ativar as notificações:</p>
+              <code className="block text-[11px] bg-blue-100 rounded px-2 py-1 mt-1 font-mono">
+                RESEND_API_KEY=re_xxxxx &nbsp;|&nbsp; ADMIN_EMAIL=seu@email.com
+              </code>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  toast({ title: 'A verificar configuração de email...' });
+                  const res = await fetch('/api/notifications/email');
+                  const data = await res.json();
+                  if (data.success && data.sent > 0) {
+                    toast({ title: 'Email enviado!', description: `${data.sent} alertas processados via ${data.provider}` });
+                  } else {
+                    toast({ title: 'Info', description: data.message || data.configHint || 'Email não configurado', variant: 'default' });
+                  }
+                } catch {
+                  toast({ title: 'Erro', description: 'Falha ao verificar email.', variant: 'destructive' });
+                }
+              }}
+            >
+              <Bell className="h-4 w-4 mr-2" />
+              Verificar Alertas de Prazo
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  toast({ title: 'A enviar email de teste...' });
+                  const res = await fetch('/api/notifications/email', { method: 'POST' });
+                  const data = await res.json();
+                  if (data.success) {
+                    toast({ title: 'Email de teste enviado!', description: `ID: ${data.emailId} → ${data.sentTo}` });
+                  } else {
+                    toast({ title: 'Não configurado', description: data.configHint || data.error || 'Configure a API key primeiro.', variant: 'default' });
+                  }
+                } catch {
+                  toast({ title: 'Erro', description: 'Falha ao enviar email de teste.', variant: 'destructive' });
+                }
+              }}
+            >
+              <Mail className="h-4 w-4 mr-2" />
+              Enviar Email de Teste
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
