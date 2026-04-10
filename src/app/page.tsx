@@ -1004,7 +1004,10 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
   const loadAlertas = async () => {
     try {
-      const res = await fetch("/api/alertas?limit=100");
+      const magistradoParam = authUser?.role === 'magistrado'
+        ? `?limit=100&magistrado=${encodeURIComponent(authUser.nome)}`
+        : '?limit=100';
+      const res = await fetch(`/api/alertas${magistradoParam}`);
       if (res.ok) setAlertas(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -1014,7 +1017,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     // Check URL params for view
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['dashboard', 'cadastro', 'gestao', 'alertas', 'relatorios', 'sistema'].includes(view)) {
+    if (view && ['dashboard', 'cadastro', 'gestao', 'alertas', 'relatorios', 'sistema', 'consultar', 'utilizadores'].includes(view)) {
       setActiveView(view);
     }
   }, []);
@@ -1323,7 +1326,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
           setInAppNotification({
             expirados: statsData.vencidos || 0,
             criticos: statsData.prazosCriticos || 0,
-            atencao: (statsData.prazosProximos || 0) - (statsData.prazosCriticos || 0),
+            atencao: Math.max(0, (statsData.prazosProximos || 0) - (statsData.prazosCriticos || 0)),
             normal: (statsData.ativos || 0) - (statsData.prazosProximos || 0),
             total: statsData.totalArguidos || 0,
             hasUrgent: (statsData.prazosCriticos || 0) > 0,
@@ -2455,7 +2458,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
               {/* ============ CONSULTAR VIEW ============ */}
               {activeView === "consultar" && (
-                <ConsultarView />
+                <ConsultarView authUser={authUser} />
               )}
 
               {/* ============ ALERTAS VIEW ============ */}
@@ -2651,26 +2654,26 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 </div>
 
                 {/* Críticos */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 border border-amber-200">
-                  <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-                    <AlertTriangle className="h-4.5 w-4.5 text-amber-600" />
+                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800">
+                  <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-amber-700">
+                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
                       {inAppNotification.criticos} Caso(s) Crítico(s)
                     </p>
-                    <p className="text-[11px] text-amber-500">Prazo muito próximo</p>
+                    <p className="text-[11px] text-amber-500 dark:text-amber-400">Prazo muito próximo</p>
                   </div>
-                  <span className="text-xl font-bold text-amber-600">{inAppNotification.criticos}</span>
+                  <span className="text-xl font-bold text-amber-600 dark:text-amber-400">{inAppNotification.criticos}</span>
                 </div>
 
                 {/* Atenção */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 border border-amber-200">
-                  <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-                    <Clock className="h-4.5 w-4.5 text-amber-600" />
+                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800">
+                  <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
+                    <Clock className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-amber-600">
+                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
                       {inAppNotification.atencao} Caso(s) em estado de Atenção
                     </p>
                     <p className="text-[11px] text-amber-600">Prazo próximo</p>
@@ -2950,7 +2953,7 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
   const isMagistrado = authUser?.role === 'magistrado';
 
   const conformidade = stats.ativos > 0
-    ? Math.round(((stats.ativos - stats.prazosCriticos) / stats.ativos) * 100)
+    ? Math.max(0, Math.round(((stats.ativos - stats.prazosCriticos) / stats.ativos) * 100))
     : 100;
 
   const pieData = stats.statusCounts.map(s => ({
@@ -3171,17 +3174,17 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
                       </span>
                     </TableCell>
                     <TableCell className="py-2.5">
-                      <p className="text-sm font-medium leading-tight text-[#222]"><span className="inline-block max-w-[180px] lg:max-w-[240px] align-bottom truncate">{p.nomeArguido}</span></p>
-                      <p className="text-sm text-[#555]"><span className="inline-block max-w-[180px] lg:max-w-[240px] align-bottom truncate">{p.numeroProcesso}</span></p>
+                      <p className="text-sm font-medium leading-tight text-gray-800 dark:text-gray-100"><span className="inline-block max-w-[180px] lg:max-w-[240px] align-bottom truncate">{p.nomeArguido}</span></p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400"><span className="inline-block max-w-[180px] lg:max-w-[240px] align-bottom truncate">{p.numeroProcesso}</span></p>
                     </TableCell>
                     <TableCell className="py-2.5 hidden md:table-cell">
-                      <p className="text-sm text-[#333]"><span className="inline-block max-w-[130px] align-bottom truncate">{p.crime}</span></p>
+                      <p className="text-sm text-gray-600 dark:text-gray-300"><span className="inline-block max-w-[130px] align-bottom truncate">{p.crime}</span></p>
                     </TableCell>
                     <TableCell className="py-2.5 hidden sm:table-cell">
-                      <p className="text-sm text-[#333]"><span className="inline-block max-w-[90px] align-bottom truncate">{p.tipo}</span></p>
+                      <p className="text-sm text-gray-600 dark:text-gray-300"><span className="inline-block max-w-[90px] align-bottom truncate">{p.tipo}</span></p>
                     </TableCell>
                     <TableCell className="py-2.5 text-right">
-                      <p className="text-sm font-medium whitespace-nowrap text-[#222]">{formatDate(p.dataVencimento)}</p>
+                      <p className="text-sm font-medium whitespace-nowrap text-gray-800 dark:text-gray-100">{formatDate(p.dataVencimento)}</p>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -3226,13 +3229,17 @@ function CadastroView({ formData, setFormData, onSubmit }: {
 }
 
 // ===================== GESTÃO VIEW =====================
-function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, totalRecords, onEdit, onDelete, onView, onPdf, onRefresh, onExport, onNew, canCreate, canEdit, canDelete, canExport, canImport }: {
+function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, detencaoDe, setDetencaoDe, detencaoAte, setDetencaoAte, prazoDe, setPrazoDe, prazoAte, setPrazoAte, totalRecords, onEdit, onDelete, onView, onPdf, onRefresh, onExport, onExportSelected, onNew, canCreate, canEdit, canDelete, canExport, canImport, selectedIds: parentSelectedIds, setSelectedIds: setParentSelectedIds }: {
   arguidos: Arguido[];
   loading: boolean;
   searchTerm: string; setSearchTerm: (v: string) => void;
   filterCrime: string; setFilterCrime: (v: string) => void;
   filterStatus: string; setFilterStatus: (v: string) => void;
   filterPrazo: string; setFilterPrazo: (v: string) => void;
+  detencaoDe: string; setDetencaoDe: (v: string) => void;
+  detencaoAte: string; setDetencaoAte: (v: string) => void;
+  prazoDe: string; setPrazoDe: (v: string) => void;
+  prazoAte: string; setPrazoAte: (v: string) => void;
   totalRecords: number;
   onEdit: (a: Arguido) => void;
   onDelete: (id: number) => void;
@@ -3240,29 +3247,31 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
   onPdf: (a: Arguido) => void;
   onRefresh: () => void;
   onExport: () => void;
+  onExportSelected?: (ids: number[]) => void;
   onNew: () => void;
   canCreate?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
   canExport?: boolean;
   canImport?: boolean;
+  selectedIds?: Set<number>;
+  setSelectedIds?: (ids: Set<number>) => void;
 }) {
   const { toast } = useToast();
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   // Batch operations state
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [batchStatus, setBatchStatus] = useState("");
+  const [selectedIdsLocal, setSelectedIdsLocal] = useState<Set<number>>(new Set());
+  const selIds = parentSelectedIds ?? selectedIdsLocal;
+  const setSelIds = setParentSelectedIds ?? setSelectedIdsLocal;
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [detencaoDe, setDetencaoDe] = useState("");
-  const [detencaoAte, setDetencaoAte] = useState("");
-  const [prazoDe, setPrazoDe] = useState("");
-  const [prazoAte, setPrazoAte] = useState("");
   const [batchLoading, setBatchLoading] = useState(false);
 
+  const [batchStatus, setBatchStatus] = useState("");
+
   const toggleSelect = (id: number) => {
-    setSelectedIds(prev => {
+    setSelIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
@@ -3270,26 +3279,26 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === arguidos.length) {
-      setSelectedIds(new Set());
+    if (selIds.size === arguidos.length) {
+      setSelIds(new Set());
     } else {
-      setSelectedIds(new Set(arguidos.map(a => a.id)));
+      setSelIds(new Set(arguidos.map(a => a.id)));
     }
   };
 
   const handleBatchStatusChange = async () => {
-    if (!batchStatus || selectedIds.size === 0) return;
+    if (!batchStatus || selIds.size === 0) return;
     setBatchLoading(true);
     try {
       const res = await fetch('/api/arguidos/batch', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: Array.from(selectedIds), updates: { status: batchStatus } }),
+        body: JSON.stringify({ ids: Array.from(selIds), updates: { status: batchStatus } }),
       });
       if (res.ok) {
         const data = await res.json();
         toast({ title: 'Status actualizado', description: `${data.updated} registo(s) actualizado(s) para "${batchStatus}"` });
-        setSelectedIds(new Set());
+        setSelIds(new Set());
         setBatchStatus("");
         onRefresh();
       } else {
@@ -3304,6 +3313,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
 
   const handleClearFilters = () => {
     setDetencaoDe(""); setDetencaoAte(""); setPrazoDe(""); setPrazoAte("");
+    setFilterStatus(""); setFilterCrime("");
   };
 
   const hasAdvancedFilters = detencaoDe || detencaoAte || prazoDe || prazoAte;
@@ -3392,7 +3402,14 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
               />
             </div>
             <div className="flex gap-2 flex-wrap">
-              <Select value={filterStatus} onValueChange={v => setFilterStatus(v === "todos" ? "" : v)}>
+              <Select value={filterCrime || "todos"} onValueChange={v => setFilterCrime(v === "todos" ? "" : v)}>
+                <SelectTrigger className="w-40 bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary"><SelectValue placeholder="Crime" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos Crimes</SelectItem>
+                  {CRIMES_LIST.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={filterStatus || "todos"} onValueChange={v => setFilterStatus(v === "todos" ? "" : v)}>
                 <SelectTrigger className="w-36 bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 focus:border-pgr-primary"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos Status</SelectItem>
@@ -3453,9 +3470,9 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
       )}
 
       {/* Batch Action Bar */}
-      {selectedIds.size > 0 && (
+      {selIds.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-stone-800 dark:bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 border border-stone-700 dark:border-gray-700 animate-[fadeIn_0.2s_ease-out]">
-          <span className="text-sm font-semibold">{selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}</span>
+          <span className="text-sm font-semibold">{selIds.size} seleccionado{selIds.size !== 1 ? 's' : ''}</span>
           <div className="w-px h-6 bg-stone-600" />
           <Select value={batchStatus} onValueChange={setBatchStatus}>
             <SelectTrigger className="w-36 h-8 text-xs bg-stone-700 border-stone-600 text-white"><SelectValue placeholder="Alterar Status..." /></SelectTrigger>
@@ -3469,8 +3486,13 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
             {batchLoading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
             Aplicar
           </Button>
+          {onExportSelected && (
+            <Button size="sm" variant="ghost" className="h-8 text-xs text-stone-400 hover:text-white hover:bg-stone-700" onClick={() => onExportSelected(Array.from(selIds))}>
+              <FileDown className="h-3 w-3 mr-1" /> Exportar PDF
+            </Button>
+          )}
           <div className="w-px h-6 bg-stone-600" />
-          <Button size="sm" variant="ghost" className="h-8 text-xs text-stone-400 hover:text-white hover:bg-stone-700" onClick={() => setSelectedIds(new Set())}>
+          <Button size="sm" variant="ghost" className="h-8 text-xs text-stone-400 hover:text-white hover:bg-stone-700" onClick={() => setSelIds(new Set())}>
             Limpar
           </Button>
         </div>
@@ -3494,7 +3516,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
               <Table>
                 <TableHeader className="sticky top-0 z-10">
                   <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
-                    <TableHead className="text-sm font-semibold text-white w-10"><Checkbox checked={selectedIds.size === arguidos.length && arguidos.length > 0} onCheckedChange={toggleSelectAll} className="border-white/40" /></TableHead>
+                    <TableHead className="text-sm font-semibold text-white w-10"><Checkbox checked={selIds.size === arguidos.length && arguidos.length > 0} onCheckedChange={toggleSelectAll} className="border-white/40" /></TableHead>
                     <TableHead className="text-sm font-semibold text-white">ID</TableHead>
                     <TableHead className="text-sm font-semibold text-white">Nº Processo</TableHead>
                     <TableHead className="text-sm font-semibold text-white">Nome</TableHead>
@@ -3511,13 +3533,13 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                     const days2 = getDaysRemaining(a.fimSegundoPrazo);
                     const nearestDays = [days1, days2].filter(d => d !== null).sort((a, b) => a! - b!)[0] ?? null;
                     return (
-                      <TableRow key={a.id} className={`cursor-pointer transition-colors ${selectedIds.has(a.id) ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-inset ring-blue-300 dark:ring-blue-700' : idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`} onClick={() => onView(a)}>
-                        <TableCell onClick={e => e.stopPropagation()}><Checkbox checked={selectedIds.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} /></TableCell>
-                        <TableCell className="text-sm font-mono text-[#555] whitespace-nowrap">{a.numeroId}</TableCell>
-                        <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[120px] truncate">{a.numeroProcesso}</p></TableCell>
-                        <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[250px] truncate">{a.nomeArguido}</p></TableCell>
-                        <TableCell className="text-sm text-[#333] hidden md:table-cell"><p className="max-w-[150px] truncate">{a.crime}</p></TableCell>
-                        <TableCell className="text-sm text-[#333] hidden lg:table-cell"><p className="max-w-[140px] truncate">{a.magistrado}</p></TableCell>
+                      <TableRow key={a.id} className={`cursor-pointer transition-colors ${selIds.has(a.id) ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-inset ring-blue-300 dark:ring-blue-700' : idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`} onClick={() => onView(a)}>
+                        <TableCell onClick={e => e.stopPropagation()}><Checkbox checked={selIds.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} /></TableCell>
+                        <TableCell className="text-sm font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">{a.numeroId}</TableCell>
+                        <TableCell className="text-sm font-medium text-gray-800 dark:text-gray-100"><p className="max-w-[120px] truncate">{a.numeroProcesso}</p></TableCell>
+                        <TableCell className="text-sm font-medium text-gray-800 dark:text-gray-100"><p className="max-w-[250px] truncate">{a.nomeArguido}</p></TableCell>
+                        <TableCell className="text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell"><p className="max-w-[150px] truncate">{a.crime}</p></TableCell>
+                        <TableCell className="text-sm text-gray-600 dark:text-gray-300 hidden lg:table-cell"><p className="max-w-[140px] truncate">{a.magistrado}</p></TableCell>
                         <TableCell>
                           <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded ${getDeadlineColor(nearestDays)}`}>
                             {getDeadlineLabel(nearestDays)}
@@ -3552,7 +3574,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                 </TableBody>
               </Table>
               {/* Footer with total count */}
-              <div className="flex items-center justify-center px-4 py-3 border-t border-stone-200">
+              <div className="flex items-center justify-center px-4 py-3 border-t border-stone-200 dark:border-gray-700">
                 <p className="text-sm text-pgr-text-muted">
                   {totalRecords} registo{totalRecords !== 1 ? "s" : ""}
                 </p>
@@ -3638,16 +3660,16 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
       {/* Summary Cards */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="bg-red-50 border border-red-200">
+          <Card className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800">
             <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-red-500">{stats.prazosCriticos}</p>
-              <p className="text-sm text-red-500 font-medium">Críticos</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{stats.prazosCriticos}</p>
+              <p className="text-sm text-red-600 dark:text-red-400 font-medium">Críticos</p>
             </CardContent>
           </Card>
-          <Card className="bg-amber-50 border border-amber-200">
+          <Card className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800">
             <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-amber-600">{stats.prazosProximos - stats.prazosCriticos}</p>
-              <p className="text-sm text-amber-600 font-medium">Atenção</p>
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{Math.max(0, stats.prazosProximos - stats.prazosCriticos)}</p>
+              <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">Atenção</p>
             </CardContent>
           </Card>
           <Card className="bg-red-800/15 border border-red-800/30">
@@ -3704,21 +3726,21 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
                       </span>
                     </TableCell>
                     <TableCell className="py-2.5">
-                      <p className="text-sm text-[#333]"><span className="inline-block max-w-[75px] align-bottom truncate">{alerta.tipoAlerta.replace("_", " ")}</span></p>
+                      <p className="text-sm text-gray-600 dark:text-gray-300"><span className="inline-block max-w-[75px] align-bottom truncate">{alerta.tipoAlerta.replace("_", " ")}</span></p>
                     </TableCell>
                     <TableCell className="py-2.5">
-                      <p className="text-sm text-[#222]"><span className="inline-block max-w-[220px] sm:max-w-[320px] md:max-w-[420px] align-bottom truncate">{alerta.mensagem}</span></p>
+                      <p className="text-sm text-gray-800 dark:text-gray-100"><span className="inline-block max-w-[220px] sm:max-w-[320px] md:max-w-[420px] align-bottom truncate">{alerta.mensagem}</span></p>
                     </TableCell>
                     <TableCell className="py-2.5 hidden sm:table-cell">
-                      <p className="text-sm text-[#333]"><span className="inline-block max-w-[65px] align-bottom truncate">{alerta.canalEnvio}</span></p>
+                      <p className="text-sm text-gray-600 dark:text-gray-300"><span className="inline-block max-w-[65px] align-bottom truncate">{alerta.canalEnvio}</span></p>
                     </TableCell>
                     <TableCell className="py-2.5 text-right">
-                      <p className="text-sm text-[#333] whitespace-nowrap">{formatDate(alerta.dataDisparo)}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">{formatDate(alerta.dataDisparo)}</p>
                     </TableCell>
                     <TableCell className="py-2.5 text-center">
                       {alerta.arguidoId && (
                         <button
-                          className="h-7 w-7 inline-flex items-center justify-center rounded-md text-[#555] hover:text-[#222] hover:bg-[#d0d0d0] transition-colors"
+                          className="h-7 w-7 inline-flex items-center justify-center rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                           onClick={(e) => { e.stopPropagation(); onView(alerta.arguidoId); }}
                         >
                           <Eye className="h-3.5 w-3.5" />
@@ -3939,11 +3961,11 @@ function RelatoriosView({ stats, reportFilters, setReportFilters, onApplyFilters
           <CardContent>
             <div className="grid grid-cols-3 gap-3">
               {stats.statusCounts.map((sc, idx) => {
-                const statusColors: Record<string, string> = { ativo: 'bg-green-100 text-green-700 border-green-200', vencido: 'bg-red-100 text-red-700 border-red-200', encerrado: 'bg-stone-200 text-stone-600 border-stone-300' };
+                const statusColors: Record<string, string> = { ativo: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800', vencido: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800', encerrado: 'bg-stone-200 dark:bg-gray-800 text-stone-600 dark:text-gray-400 border-stone-300 dark:border-gray-700' };
                 const barColors: Record<string, string> = { ativo: 'bg-green-500', vencido: 'bg-red-500', encerrado: 'bg-stone-400' };
                 const pct = stats.totalArguidos > 0 ? (sc._count.status / stats.totalArguidos) * 100 : 0;
                 return (
-                  <div key={idx} className={`rounded-lg border p-3 ${statusColors[sc.status] || 'bg-stone-100 text-stone-600 border-stone-200'}`}>
+                  <div key={idx} className={`rounded-lg border p-3 ${statusColors[sc.status] || 'bg-stone-100 dark:bg-gray-800 text-stone-600 dark:text-gray-400 border-stone-200 dark:border-gray-700'}`}>
                     <p className="text-xs font-medium uppercase tracking-wider opacity-70">{sc.status}</p>
                     <p className="text-xl font-bold mt-1">{sc._count.status}</p>
                     <div className="mt-2 h-1.5 bg-black/10 rounded-full overflow-hidden">
@@ -4041,9 +4063,9 @@ function RelatoriosView({ stats, reportFilters, setReportFilters, onApplyFilters
             <TableBody>
               {stats.crimes.map((c, idx) => (
                 <TableRow key={idx} className={`transition-colors ${idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`}>
-                  <TableCell className="text-base font-medium text-[#222]">{c.crime || "Não especificado"}</TableCell>
-                  <TableCell className="text-base text-right text-[#222]">{c._count.crime}</TableCell>
-                  <TableCell className="text-base text-right text-[#222]">
+                  <TableCell className="text-base font-medium text-gray-800 dark:text-gray-100">{c.crime || "Não especificado"}</TableCell>
+                  <TableCell className="text-base text-right text-gray-800 dark:text-gray-100">{c._count.crime}</TableCell>
+                  <TableCell className="text-base text-right text-gray-800 dark:text-gray-100">
                     {stats.totalArguidos > 0 ? ((c._count.crime / stats.totalArguidos) * 100).toFixed(1) : 0}%
                   </TableCell>
                 </TableRow>
@@ -4060,7 +4082,7 @@ function RelatoriosView({ stats, reportFilters, setReportFilters, onApplyFilters
 }
 
 // ===================== CONSULTAR VIEW =====================
-function ConsultarView() {
+function ConsultarView({ authUser }: { authUser: { username: string; nome: string; role: string } | null }) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<Arguido[]>([]);
@@ -4083,6 +4105,9 @@ function ConsultarView() {
         page: '1',
         pageSize: '20',
       });
+      if (authUser?.role === 'magistrado') {
+        params.set('magistrado', authUser.nome);
+      }
       const res = await fetch(`/api/arguidos?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -4186,14 +4211,14 @@ function ConsultarView() {
                         ? 'bg-stone-300/70 dark:bg-gray-700/70 ring-2 ring-inset ring-stone-500 dark:ring-gray-400'
                         : idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'
                     } text-pgr-text dark:text-gray-100`} onClick={() => handleSelectArguido(a)}>
-                      <TableCell className="text-sm font-mono text-[#555] whitespace-nowrap">{a.numeroId}</TableCell>
-                      <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[120px] truncate">{a.numeroProcesso}</p></TableCell>
-                      <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[250px] truncate">{a.nomeArguido}</p></TableCell>
-                      <TableCell className="text-sm text-[#333] hidden md:table-cell"><p className="max-w-[150px] truncate">{a.crime}</p></TableCell>
-                      <TableCell className="text-sm text-[#333] hidden lg:table-cell"><p className="max-w-[120px] truncate">{a.magistrado}</p></TableCell>
+                      <TableCell className="text-sm font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">{a.numeroId}</TableCell>
+                      <TableCell className="text-sm font-medium text-gray-800 dark:text-gray-100"><p className="max-w-[120px] truncate">{a.numeroProcesso}</p></TableCell>
+                      <TableCell className="text-sm font-medium text-gray-800 dark:text-gray-100"><p className="max-w-[250px] truncate">{a.nomeArguido}</p></TableCell>
+                      <TableCell className="text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell"><p className="max-w-[150px] truncate">{a.crime}</p></TableCell>
+                      <TableCell className="text-sm text-gray-600 dark:text-gray-300 hidden lg:table-cell"><p className="max-w-[120px] truncate">{a.magistrado}</p></TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          <p className="text-xs text-[#333]">{a.fimPrimeiroPrazo ? formatDate(a.fimPrimeiroPrazo) : '—'}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-300">{a.fimPrimeiroPrazo ? formatDate(a.fimPrimeiroPrazo) : '—'}</p>
                           {nearestDays !== null && (
                             <span className={`inline-block w-fit text-[10px] font-bold px-1.5 py-0.5 rounded ${getDeadlineColor(nearestDays)}`}>
                               {getDeadlineLabel(nearestDays)}
@@ -4414,8 +4439,8 @@ function UtilizadoresView() {
               <TableBody>
                 {users.map((u, idx) => (
                   <TableRow key={u.id} className={`transition-colors ${idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`}>
-                    <TableCell className="text-sm font-mono text-[#555] whitespace-nowrap">{u.username}</TableCell>
-                    <TableCell className="text-sm font-medium text-[#222]">{u.nome}</TableCell>
+                    <TableCell className="text-sm font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">{u.username}</TableCell>
+                    <TableCell className="text-sm font-medium text-gray-800 dark:text-gray-100">{u.nome}</TableCell>
                     <TableCell>
                       <Select
                         value={u.role}
@@ -4994,14 +5019,14 @@ function getTimelineIconBg(entry: TimelineEntry): string {
   }
   // Alert types
   const action = entry.action.toLowerCase();
-  if (action.includes('expirado') || action.includes('critico')) return 'bg-red-50';
-  if (action.includes('vence hoje')) return 'bg-orange-50';
-  return 'bg-amber-50';
+  if (action.includes('expirado') || action.includes('critico')) return 'bg-red-50 dark:bg-red-900/30';
+  if (action.includes('vence hoje')) return 'bg-orange-50 dark:bg-orange-900/30';
+  return 'bg-amber-50 dark:bg-amber-900/30';
 }
 
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between py-1 border-b border-stone-200">
+    <div className="flex justify-between py-1 border-b border-stone-200 dark:border-gray-700">
       <span className="text-muted-foreground text-xs">{label}</span>
       <span className="font-medium text-xs text-right">{value}</span>
     </div>
