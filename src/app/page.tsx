@@ -356,7 +356,7 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
         {/* Search Results */}
         {searchDone && searchResults.length > 0 && (
           <div className="w-full max-w-2xl mt-6 space-y-3 animate-[fadeIn_0.3s_ease-out]">
-            <p className="text-xs text-stone-400 text-center">
+            <p className="text-xs text-white/50 text-center">
               {searchResults.length} resultado{searchResults.length > 1 ? 's' : ''} encontrado{searchResults.length > 1 ? 's' : ''}
             </p>
             {searchResults.map((item) => {
@@ -365,13 +365,13 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
               return (
                 <div
                   key={item.id}
-                  className="bg-white/[0.06] backdrop-blur-md border border-white/[0.1] rounded-2xl p-5 text-left hover:border-orange-500/30 hover:bg-white/[0.08] transition-all duration-300"
+                  className="bg-black/60 backdrop-blur-xl border border-white/20 rounded-2xl p-5 text-left hover:border-orange-500/40 hover:bg-black/70 transition-all duration-300 shadow-lg shadow-black/30"
                 >
                   {/* Card Header */}
                   <div className="flex items-start justify-between gap-3 mb-4">
                     <div className="min-w-0">
                       <h3 className="text-base font-bold text-white truncate">{item.nomeArguido}</h3>
-                      <p className="text-xs text-stone-400 mt-0.5">
+                      <p className="text-xs text-white/50 mt-0.5">
                         {item.numeroId} · Processo Nº {item.numeroProcesso}
                       </p>
                     </div>
@@ -385,7 +385,7 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
                   </div>
 
                   {/* Info Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                     <InfoPill icon={<Calendar className="w-3 h-3" />} label="Detenção" value={formatDate(item.dataDetencao)} />
                     <InfoPill icon={<Gavel className="w-3 h-3" />} label="Crime" value={item.crime || '—'} />
                     <InfoPill icon={<Building2 className="w-3 h-3" />} label="Medida" value={item.medidasAplicadas || '—'} />
@@ -414,10 +414,10 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
         {/* No Results Message */}
         {searchDone && searchResults.length === 0 && searchMsg && (
           <div className="w-full max-w-lg mt-6 animate-[fadeIn_0.3s_ease-out]">
-            <div className="bg-white/[0.04] backdrop-blur-sm border border-white/[0.08] rounded-2xl p-6 text-center">
-              <AlertCircle className="w-8 h-8 text-stone-500 mx-auto mb-3" />
-              <p className="text-sm text-stone-400">{searchMsg}</p>
-              <p className="text-xs text-stone-600 mt-1">
+            <div className="bg-black/60 backdrop-blur-xl border border-white/20 rounded-2xl p-6 text-center shadow-lg shadow-black/30">
+              <AlertCircle className="w-8 h-8 text-white/40 mx-auto mb-3" />
+              <p className="text-sm text-white/60">{searchMsg}</p>
+              <p className="text-xs text-white/30 mt-1">
                 Tente pesquisar pelo nome, número do processo ou ID.
               </p>
             </div>
@@ -444,13 +444,13 @@ function InfoPill({ icon, label, value, badge, badgeColor }: {
   badgeColor?: string;
 }) {
   return (
-    <div className="bg-white/[0.04] rounded-lg px-3 py-2.5 flex flex-col gap-1">
-      <div className="flex items-center gap-1.5 text-stone-500">
+    <div className="bg-white/[0.10] rounded-lg px-3 py-2.5 flex flex-col gap-1 border border-white/[0.06]">
+      <div className="flex items-center gap-1.5 text-white/40">
         {icon}
         <span className="text-[10px] uppercase tracking-wide font-medium">{label}</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-xs text-stone-200 font-medium truncate">{value}</span>
+        <span className="text-xs text-white font-medium truncate">{value}</span>
         {badge && badgeColor && (
           <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeColor}`}>
             {badge}
