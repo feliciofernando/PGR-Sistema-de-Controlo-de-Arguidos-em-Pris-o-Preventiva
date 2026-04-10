@@ -145,12 +145,12 @@ function getDaysRemaining(dateStr: string | null): number | null {
 }
 
 function getDeadlineColor(days: number | null): string {
-  if (days === null) return "bg-stone-200 text-stone-500";
-  if (days < 0) return "bg-red-600 text-white";           // Vencido — vermelho forte
-  if (days === 0) return "bg-red-500 text-white";          // Vence hoje — vermelho
-  if (days === 1) return "bg-orange-500 text-white";       // Vence amanhã — laranja
-  if (days <= 7) return "bg-amber-500 text-white";         // 2-7 dias — amarelo/âmbar
-  return "bg-emerald-500 text-white";                      // >7 dias — verde
+  if (days === null) return "bg-gray-200 text-gray-600";
+  if (days < 0) return "bg-[#d9534f] text-white font-bold";   // Vencido
+  if (days === 0) return "bg-[#d9534f] text-white font-bold";  // Vence hoje
+  if (days === 1) return "bg-[#e07020] text-white font-bold";  // Vence amanhã — laranja suave
+  if (days <= 7) return "bg-[#c8a830] text-white font-bold";   // 2-7 dias — amarelo escuro
+  return "bg-[#5cb85c] text-white font-bold";                   // >7 dias
 }
 
 function getDeadlineLabel(days: number | null): string {
