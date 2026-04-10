@@ -498,70 +498,92 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-pgr-bg p-4">
-      <Card className="w-full max-w-md shadow-2xl bg-pgr-surface border border-stone-200">
-        <CardHeader className="text-center pb-2">
-          <div className="mx-auto w-16 h-16 bg-pgr-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg">
-            <Scale className="h-8 w-8 text-white" />
-          </div>
-          <CardTitle className="text-xl font-bold text-pgr-text">PGR ANGOLA</CardTitle>
-          <CardDescription className="text-sm text-pgr-text-muted">Sistema de Controlo de Arguidos em Prisão Preventiva</CardDescription>
-        </CardHeader>
-        <CardContent className="pt-2">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {loginError && (
-              <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                {loginError}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="login-user" className="text-sm font-medium text-pgr-text">Utilizador</Label>
-              <Input
-                id="login-user"
-                type="text"
-                placeholder="nome.utilizador"
-                value={loginUsername}
-                onChange={(e) => setLoginUsername(e.target.value)}
-                className="h-11 bg-stone-100 text-pgr-text border-stone-200"
-                autoComplete="username"
-                autoFocus
-                required
-              />
+    <div
+      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 25%, #16213e 50%, #0f3460 75%, #1a1a2e 100%)' }}
+    >
+      {/* Animated Fog Layers — same as Landing Page */}
+      <div className="landing-fog-layer landing-fog-1" />
+      <div className="landing-fog-layer landing-fog-2" />
+      <div className="landing-fog-layer landing-fog-3" />
+      <div className="landing-fog-layer landing-fog-4" />
+      <div className="landing-fog-layer landing-fog-5" />
+
+      {/* Subtle grid overlay */}
+      <div
+        className="absolute inset-0 opacity-[0.03] pointer-events-none"
+        style={{
+          backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
+          backgroundSize: '50px 50px',
+        }}
+      />
+
+      {/* Login Card — centered on top of fog background */}
+      <div className="relative z-10 w-full max-w-md">
+        <Card className="shadow-2xl bg-white/[0.97] backdrop-blur-sm border border-white/30">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto w-16 h-16 bg-pgr-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg">
+              <Scale className="h-8 w-8 text-white" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="login-pass" className="text-sm font-medium text-pgr-text">Senha</Label>
-              <Input
-                id="login-pass"
-                type="password"
-                placeholder="••••••••"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                className="h-11 bg-stone-100 text-pgr-text border-stone-200"
-                autoComplete="current-password"
-                required
-              />
-            </div>
-            <Button
-              type="submit"
-              className="w-full h-11 bg-pgr-primary text-white font-bold text-sm hover:opacity-90"
-              disabled={loginLoading}
-            >
-              {loginLoading ? (
-                <span className="flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  A verificar...
-                </span>
-              ) : (
-                'Entrar no Sistema'
+            <CardTitle className="text-xl font-bold text-gray-900">PGR ANGOLA</CardTitle>
+            <CardDescription className="text-sm text-gray-500">Sistema de Controlo de Arguidos em Prisão Preventiva</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-2">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {loginError && (
+                <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {loginError}
+                </div>
               )}
-            </Button>
-          </form>
-          <p className="text-[11px] text-pgr-text-muted text-center mt-6">
-            Acesso restrito e monitorizado — Procuradoria-Geral da República de Angola
-          </p>
-        </CardContent>
-      </Card>
+              <div className="space-y-2">
+                <Label htmlFor="login-user" className="text-sm font-medium text-gray-700">Utilizador</Label>
+                <Input
+                  id="login-user"
+                  type="text"
+                  placeholder="nome.utilizador"
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  className="h-11 bg-stone-100 text-gray-900 border-stone-200"
+                  autoComplete="username"
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="login-pass" className="text-sm font-medium text-gray-700">Senha</Label>
+                <Input
+                  id="login-pass"
+                  type="password"
+                  placeholder="••••••••"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="h-11 bg-stone-100 text-gray-900 border-stone-200"
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+              <Button
+                type="submit"
+                className="w-full h-11 bg-pgr-primary text-white font-bold text-sm hover:opacity-90"
+                disabled={loginLoading}
+              >
+                {loginLoading ? (
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    A verificar...
+                  </span>
+                ) : (
+                  'Entrar no Sistema'
+                )}
+              </Button>
+            </form>
+            <p className="text-[11px] text-gray-400 text-center mt-6">
+              Acesso restrito e monitorizado — Procuradoria-Geral da República de Angola
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
