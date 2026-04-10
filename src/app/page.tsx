@@ -47,6 +47,7 @@ import {
   FileDown,
   Shield,
   ArrowRight,
+  LogOut,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -562,7 +563,7 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
 }
 
 // ===================== MAIN PAGE =====================
-function AppContent() {
+function AppContent({ authUser, onLogout }: { authUser: { username: string; nome: string; role: string } | null; onLogout: () => void }) {
   const { toast } = useToast();
 
   const [activeView, setActiveView] = useState("dashboard");
@@ -1454,8 +1455,9 @@ function AppContent() {
 
             </div>
 
-            {/* Bell icon - right side */}
-            <div className="hidden md:block pr-3">
+            {/* Right side icons — desktop */}
+            <div className="hidden md:flex items-center gap-1 pr-3">
+              {/* Bell icon */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -1474,6 +1476,32 @@ function AppContent() {
                   <p className="text-sm">{pushSubscribed ? 'Notificações ativas — Clique para desativar' : 'Ativar notificações push'}</p>
                 </TooltipContent>
               </Tooltip>
+
+              {/* Divider */}
+              <div className="w-px h-6 bg-stone-200 mx-1" />
+
+              {/* User info + Sair button */}
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <p className="text-xs font-semibold text-pgr-text leading-tight">{authUser?.nome || authUser?.username}</p>
+                  <p className="text-[10px] text-pgr-text-muted leading-tight">{authUser?.role || 'Operador'}</p>
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-10 rounded-full text-pgr-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
+                      onClick={onLogout}
+                    >
+                      <LogOut className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-sm">Sair do sistema</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             </div>
 
             {/* Mobile / Tablet Nav */}
@@ -1504,8 +1532,8 @@ function AppContent() {
                 );
               })}
 
-              {/* Bell icon at the end of mobile nav */}
-              <div className="pr-1 py-2 flex-shrink-0">
+              {/* Bell + Sair icons at the end of mobile nav */}
+              <div className="flex items-center gap-1 pr-1 py-2 flex-shrink-0">
                 <button
                   className={`relative h-10 w-10 flex items-center justify-center rounded-full transition-colors ${pushSubscribed ? 'text-green-600 bg-green-500/10' : 'text-pgr-text-muted bg-stone-50'}`}
                   onClick={pushSubscribed ? handleUnsubscribePush : handleSubscribePush}
@@ -1515,6 +1543,19 @@ function AppContent() {
                     <span className="absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-green-500 rounded-full" />
                   )}
                 </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className="relative h-10 w-10 flex items-center justify-center rounded-full text-pgr-text-muted bg-stone-50 hover:bg-red-50 hover:text-red-600 transition-colors"
+                      onClick={onLogout}
+                    >
+                      <LogOut className="h-5 w-5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-sm">Sair do sistema</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </nav>
@@ -2888,5 +2929,5 @@ export default function HomePage() {
   }
 
   // Step 3: Main application
-  return <AppContent />;
+  return <AppContent authUser={authUser} onLogout={() => { setIsAuthenticated(false); setAuthUser(null); setShowLanding(true); }} />;
 }
