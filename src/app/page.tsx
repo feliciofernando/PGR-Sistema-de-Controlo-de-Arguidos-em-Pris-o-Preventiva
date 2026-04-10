@@ -274,7 +274,7 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
           <img 
             src="/insignia-pgr.png" 
             alt="Brasão PGR" 
-            className="w-40 h-40 sm:w-48 sm:h-48 md:w-56 md:h-56 object-contain"
+            className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 object-contain"
           />
         </div>
 
@@ -292,9 +292,9 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
 
         {/* System name */}
         <div className="landing-fade-in-up-delay-2 mt-4 mb-8">
-          <div className="inline-flex items-center gap-2 bg-white/[0.06] backdrop-blur-sm border border-white/[0.1] rounded-full px-6 py-3">
-            <Scale className="w-5 h-5 text-orange-400" />
-            <span className="text-sm sm:text-base text-stone-300 font-medium">
+          <div className="inline-flex items-center gap-3 bg-white/[0.06] backdrop-blur-sm border border-white/[0.1] rounded-full px-8 py-4">
+            <Scale className="w-7 h-7 text-orange-400" />
+            <span className="text-lg sm:text-xl md:text-2xl text-stone-200 font-semibold">
               Sistema de Controlo de Arguidos em Prisão Preventiva
             </span>
           </div>
