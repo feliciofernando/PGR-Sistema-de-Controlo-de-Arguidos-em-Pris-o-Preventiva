@@ -29,6 +29,7 @@ import {
   Edit,
   Trash2,
   Eye,
+  ChevronLeft,
   AlertTriangle,
   AlertCircle,
   CheckCircle2,
@@ -1410,6 +1411,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     { id: "dashboard", label: "Painel", icon: LayoutDashboard },
     { id: "cadastro", label: "Cadastro", icon: UserPlus },
     { id: "gestao", label: "Gestão", icon: Users },
+    { id: "consultar", label: "Consultar", icon: Search },
     { id: "alertas", label: "Alertas", icon: Bell },
     { id: "relatorios", label: "Relatórios", icon: BarChart3 },
   ];
@@ -1625,6 +1627,11 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   onExport={handleExportCSV}
                   onNew={handleOpenCreate}
                 />
+              )}
+
+              {/* ============ CONSULTAR VIEW ============ */}
+              {activeView === "consultar" && (
+                <ConsultarView />
               )}
 
               {/* ============ ALERTAS VIEW ============ */}
@@ -2778,6 +2785,204 @@ function RelatoriosView({ stats }: { stats: DashboardStats | null }) {
           </Table>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ===================== CONSULTAR VIEW =====================
+function ConsultarView() {
+  const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [results, setResults] = useState<Arguido[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchDone, setSearchDone] = useState(false);
+  const [selectedArguido, setSelectedArguido] = useState<Arguido | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    setLoading(true);
+    setSearchDone(false);
+    setResults([]);
+    setSelectedArguido(null);
+
+    try {
+      const params = new URLSearchParams({
+        search: searchQuery.trim(),
+        page: '1',
+        pageSize: '20',
+      });
+      const res = await fetch(`/api/arguidos?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setResults(data.data || []);
+      } else {
+        toast({ title: 'Erro', description: 'Falha na pesquisa.', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Erro', description: 'Erro de ligação ao servidor.', variant: 'destructive' });
+    } finally {
+      setSearchDone(true);
+      setLoading(false);
+    }
+  };
+
+  const handleSelectArguido = async (arguido: Arguido) => {
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/arguidos/${arguido.id}`);
+      if (res.ok) {
+        const fullArguido = await res.json();
+        setSelectedArguido(fullArguido);
+      } else {
+        toast({ title: 'Erro', description: 'Falha ao carregar detalhes.', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Erro', description: 'Erro de ligação.', variant: 'destructive' });
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleBack = () => {
+    setSelectedArguido(null);
+  };
+
+  // Show full detail when an arguido is selected
+  if (selectedArguido) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center gap-3 mb-6">
+          <Button variant="outline" size="sm" onClick={handleBack} className="gap-2 border-stone-200 text-pgr-text-muted hover:text-stone-900 hover:bg-stone-100">
+            <ChevronLeft className="h-4 w-4" />
+            Voltar à pesquisa
+          </Button>
+          <div>
+            <h2 className="text-xl font-bold text-pgr-text">Detalhes do Arguido</h2>
+            <p className="text-sm text-muted-foreground">{selectedArguido.nomeArguido} — {selectedArguido.numeroProcesso}</p>
+          </div>
+        </div>
+        {detailLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <RefreshCw className="h-6 w-6 animate-spin text-pgr-text-muted" />
+          </div>
+        ) : (
+          <DetailView arguido={selectedArguido} />
+        )}
+      </div>
+    );
+  }
+
+  // Search view
+  return (
+    <div className="max-w-5xl mx-auto space-y-4">
+      <div>
+        <h2 className="text-2xl font-bold text-pgr-text">Consultar Arguido</h2>
+        <p className="text-sm text-muted-foreground">Pesquise por nome, número de processo ou ID para ver detalhes completos.</p>
+      </div>
+
+      {/* Search Bar */}
+      <Card className="bg-pgr-surface border border-stone-200">
+        <CardContent className="p-4">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-pgr-text-muted" />
+              <Input
+                placeholder="Pesquisar por nome, Nº processo ou ID..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-9 bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary placeholder:text-stone-400"
+                autoComplete="off"
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={loading || !searchQuery.trim()}
+              className="bg-[#D35400] hover:bg-[#E67E22] text-white font-semibold gap-2 disabled:opacity-40"
+            >
+              {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Pesquisar
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Results */}
+      {searchDone && results.length > 0 && (
+        <Card className="bg-pgr-surface border border-stone-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-pgr-text">
+              {results.length} resultado{results.length !== 1 ? 's' : ''} encontrado{results.length !== 1 ? 's' : ''}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[calc(100vh-340px)]">
+            <Table>
+              <TableHeader className="sticky top-0 z-10">
+                <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+                  <TableHead className="text-sm font-semibold text-white">ID</TableHead>
+                  <TableHead className="text-sm font-semibold text-white">Nº Processo</TableHead>
+                  <TableHead className="text-sm font-semibold text-white">Nome</TableHead>
+                  <TableHead className="text-sm font-semibold text-white hidden md:table-cell">Crime</TableHead>
+                  <TableHead className="text-sm font-semibold text-white hidden lg:table-cell">Magistrado</TableHead>
+                  <TableHead className="text-sm font-semibold text-white">1º Prazo</TableHead>
+                  <TableHead className="text-sm font-semibold text-white">Status</TableHead>
+                  <TableHead className="text-sm font-semibold text-white text-right">Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {results.map((a, idx) => {
+                  const days1 = getDaysRemaining(a.fimPrimeiroPrazo);
+                  const days2 = getDaysRemaining(a.fimSegundoPrazo);
+                  const nearestDays = [days1, days2].filter(d => d !== null).sort((x, y) => x! - y!)[0] ?? null;
+                  return (
+                    <TableRow key={a.id} className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'} text-pgr-text`} onClick={() => handleSelectArguido(a)}>
+                      <TableCell className="text-sm font-mono text-[#555] whitespace-nowrap">{a.numeroId}</TableCell>
+                      <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[120px] truncate">{a.numeroProcesso}</p></TableCell>
+                      <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[250px] truncate">{a.nomeArguido}</p></TableCell>
+                      <TableCell className="text-sm text-[#333] hidden md:table-cell"><p className="max-w-[150px] truncate">{a.crime}</p></TableCell>
+                      <TableCell className="text-sm text-[#333] hidden lg:table-cell"><p className="max-w-[120px] truncate">{a.magistrado}</p></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs text-[#333]">{a.fimPrimeiroPrazo ? formatDate(a.fimPrimeiroPrazo) : '—'}</p>
+                          {nearestDays !== null && (
+                            <span className={`inline-block w-fit text-[10px] font-bold px-1.5 py-0.5 rounded ${getDeadlineColor(nearestDays)}`}>
+                              {getDeadlineLabel(nearestDays)}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className={`text-sm font-bold px-3 py-1 rounded-lg ${
+                          a.status === 'ativo' ? 'bg-[#1c3d5a] text-white' :
+                          a.status === 'vencido' ? 'bg-[#a10000] text-white' :
+                          'bg-gray-400 text-white'
+                        }`}>
+                          {a.status.charAt(0).toUpperCase() + a.status.slice(1)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                        <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSelectArguido(a)}><Eye className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Ver Detalhes</TooltipContent></Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* No Results */}
+      {searchDone && results.length === 0 && (
+        <Card className="bg-pgr-surface border border-stone-200">
+          <CardContent className="py-16 text-center">
+            <Users className="h-12 w-12 mx-auto mb-3 opacity-20" />
+            <p className="text-sm text-muted-foreground">Nenhum arguido encontrado.</p>
+            <p className="text-xs text-muted-foreground mt-1">Tente pesquisar por outro nome, número de processo ou ID.</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
