@@ -2281,8 +2281,8 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail }: {
                     onClick={() => onViewDetail(p.id)}
                   >
                     <TableCell className="py-2.5">
-                      <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded ${getDeadlineColor(p.diasRestantes)}`}>
-                        {p.diasRestantes <= 0 ? "VENCIDO" : `D-${p.diasRestantes}`}
+                      <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded whitespace-nowrap ${getDeadlineColor(p.diasRestantes)}`}>
+                        {getDeadlineLabel(p.diasRestantes)}
                       </span>
                     </TableCell>
                     <TableCell className="py-2.5">
@@ -2600,8 +2600,8 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
                     onClick={() => alerta.arguidoId && onView(alerta.arguidoId)}
                   >
                     <TableCell className="py-2.5">
-                      <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded ${getDeadlineColor(alerta.diasRestantes)}`}>
-                        {alerta.diasRestantes <= 0 ? "VENCIDO" : `D-${alerta.diasRestantes}`}
+                      <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded whitespace-nowrap ${getDeadlineColor(alerta.diasRestantes)}`}>
+                        {getDeadlineLabel(alerta.diasRestantes)}
                       </span>
                     </TableCell>
                     <TableCell className="py-2.5">
