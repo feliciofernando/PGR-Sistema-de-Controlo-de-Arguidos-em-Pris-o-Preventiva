@@ -2885,36 +2885,10 @@ function ConsultarView() {
     }
   };
 
-  const handleBack = () => {
+  const handleCloseDetail = () => {
     setSelectedArguido(null);
   };
 
-  // Show full detail when an arguido is selected
-  if (selectedArguido) {
-    return (
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Button variant="outline" size="sm" onClick={handleBack} className="gap-2 border-stone-200 text-pgr-text-muted hover:text-stone-900 hover:bg-stone-100">
-            <ChevronLeft className="h-4 w-4" />
-            Voltar à pesquisa
-          </Button>
-          <div>
-            <h2 className="text-xl font-bold text-pgr-text">Detalhes do Arguido</h2>
-            <p className="text-sm text-muted-foreground">{selectedArguido.nomeArguido} — {selectedArguido.numeroProcesso}</p>
-          </div>
-        </div>
-        {detailLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <RefreshCw className="h-6 w-6 animate-spin text-pgr-text-muted" />
-          </div>
-        ) : (
-          <DetailView arguido={selectedArguido} />
-        )}
-      </div>
-    );
-  }
-
-  // Search view
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       <div>
@@ -2948,7 +2922,7 @@ function ConsultarView() {
         </CardContent>
       </Card>
 
-      {/* Results */}
+      {/* Results Table */}
       {searchDone && results.length > 0 && (
         <Card className="bg-pgr-surface border border-stone-200">
           <CardHeader className="pb-2">
@@ -2956,7 +2930,7 @@ function ConsultarView() {
               {results.length} resultado{results.length !== 1 ? 's' : ''} encontrado{results.length !== 1 ? 's' : ''}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[calc(100vh-340px)]">
+          <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[300px]">
             <Table>
               <TableHeader className="sticky top-0 z-10">
                 <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
@@ -2975,8 +2949,13 @@ function ConsultarView() {
                   const days1 = getDaysRemaining(a.fimPrimeiroPrazo);
                   const days2 = getDaysRemaining(a.fimSegundoPrazo);
                   const nearestDays = [days1, days2].filter(d => d !== null).sort((x, y) => x! - y!)[0] ?? null;
+                  const isSelected = selectedArguido?.id === a.id;
                   return (
-                    <TableRow key={a.id} className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'} text-pgr-text`} onClick={() => handleSelectArguido(a)}>
+                    <TableRow key={a.id} className={`cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-stone-300/70 ring-2 ring-inset ring-stone-500'
+                        : idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'
+                    } text-pgr-text`} onClick={() => handleSelectArguido(a)}>
                       <TableCell className="text-sm font-mono text-[#555] whitespace-nowrap">{a.numeroId}</TableCell>
                       <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[120px] truncate">{a.numeroProcesso}</p></TableCell>
                       <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[250px] truncate">{a.nomeArguido}</p></TableCell>
@@ -3011,6 +2990,37 @@ function ConsultarView() {
             </Table>
           </CardContent>
         </Card>
+      )}
+
+      {/* Detail Panel — shown below the table */}
+      {selectedArguido && (
+        <div className="space-y-3" style={{ animation: 'fadeIn 0.3s ease-out' }}>
+          {/* Detail header with close button */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-stone-800 rounded-lg flex items-center justify-center">
+                <Eye className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-pgr-text">Ficha Completa do Arguido</h3>
+                <p className="text-xs text-muted-foreground">{selectedArguido.nomeArguido} — {selectedArguido.numeroProcesso}</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleCloseDetail} className="gap-1.5 border-stone-200 text-pgr-text-muted hover:text-stone-900 hover:bg-stone-100 text-xs">
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Fechar
+            </Button>
+          </div>
+          {detailLoading ? (
+            <Card className="bg-pgr-surface border border-stone-200">
+              <CardContent className="py-12 flex items-center justify-center">
+                <RefreshCw className="h-6 w-6 animate-spin text-pgr-text-muted" />
+              </CardContent>
+            </Card>
+          ) : (
+            <DetailView arguido={selectedArguido} />
+          )}
+        </div>
       )}
 
       {/* No Results */}
