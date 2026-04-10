@@ -99,9 +99,10 @@ export async function GET() {
 
     // Try to send via Resend (if API key configured)
     const resendApiKey = process.env.RESEND_API_KEY;
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@pgr.ao';
+    const adminEmail = process.env.ADMIN_EMAIL || '';
+    const emailFrom = process.env.EMAIL_FROM || 'PGR Sistema <onboarding@resend.dev>';
 
-    if (resendApiKey) {
+    if (resendApiKey && adminEmail) {
       try {
         const resendRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
@@ -110,7 +111,7 @@ export async function GET() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            from: 'PGR Sistema <noreply@pgr.ao>',
+            from: emailFrom,
             to: [adminEmail],
             subject,
             html: htmlBody,
@@ -129,6 +130,15 @@ export async function GET() {
               criticos: criticos.length,
               atencao: atencao.length,
             },
+          });
+        } else {
+          const errData = await resendRes.json();
+          return NextResponse.json({
+            success: false,
+            provider: 'resend',
+            error: errData,
+            message: `Resend API error: ${errData?.name || errData?.message || 'Unknown'}`,
+            hint: errData?.message?.includes('domain') ? 'Verify your domain in Resend or use onboarding@resend.dev' : 'Check API key and domain settings.',
           });
         }
       } catch (emailErr) {
@@ -243,14 +253,15 @@ function buildEmailHTML(
 export async function POST() {
   try {
     const resendApiKey = process.env.RESEND_API_KEY;
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@pgr.ao';
+    const adminEmail = process.env.ADMIN_EMAIL || '';
+    const emailFrom = process.env.EMAIL_FROM || 'PGR Sistema <onboarding@resend.dev>';
 
-    if (!resendApiKey) {
+    if (!resendApiKey || !adminEmail) {
       return NextResponse.json({
         success: false,
         message: 'Email service not configured.',
-        configHint: 'Add RESEND_API_KEY to .env.local to enable email.',
-        testResult: 'Would send test email to ' + adminEmail,
+        configHint: 'Add RESEND_API_KEY and ADMIN_EMAIL to .env.local or Vercel env vars to enable email.',
+        testResult: `Would send test email to ${adminEmail || '(not set)'}`,
       });
     }
 
@@ -276,7 +287,7 @@ export async function POST() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'PGR Sistema <noreply@pgr.ao>',
+        from: emailFrom,
         to: [adminEmail],
         subject: '📧 PGR Angola — Email de Teste',
         html: testHtml,
@@ -289,7 +300,13 @@ export async function POST() {
     }
 
     const errorData = await resendRes.json();
-    return NextResponse.json({ success: false, error: errorData }, { status: 500 });
+    return NextResponse.json({ 
+      success: false, 
+      error: errorData,
+      hint: errorData?.message?.includes('domain') 
+        ? 'Verify your domain in Resend Dashboard → Domains. Or use onboarding@resend.dev for testing.' 
+        : 'Check your API key and configuration.',
+    }, { status: 500 });
   } catch (error) {
     console.error('Test email error:', error);
     return NextResponse.json({ error: 'Failed to send test email' }, { status: 500 });

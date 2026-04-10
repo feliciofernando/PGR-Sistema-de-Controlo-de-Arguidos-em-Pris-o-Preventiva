@@ -5282,9 +5282,11 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
             <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-blue-800">
               <p className="font-medium">Configuração necessária</p>
-              <p className="text-xs mt-1">Adicione as variáveis de ambiente para ativar as notificações:</p>
+              <p className="text-xs mt-1">Adicione estas variáveis de ambiente no Vercel (Settings → Environment Variables):</p>
               <code className="block text-[11px] bg-blue-100 rounded px-2 py-1 mt-1 font-mono">
-                RESEND_API_KEY=re_xxxxx &nbsp;|&nbsp; ADMIN_EMAIL=seu@email.com
+                RESEND_API_KEY=re_xxxxx<br/>
+                ADMIN_EMAIL=seu.email@exemplo.com<br/>
+                EMAIL_FROM=PGR Sistema &lt;onboarding@resend.dev&gt;
               </code>
             </div>
           </div>
