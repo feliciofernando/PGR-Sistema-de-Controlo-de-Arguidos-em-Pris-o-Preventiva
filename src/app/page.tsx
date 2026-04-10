@@ -13,10 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -673,13 +671,13 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
           <CardContent className="pt-2">
             <form onSubmit={handleSubmit} className="space-y-4">
               {loginError && (
-                <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
+                <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
                   {loginError}
                 </div>
               )}
               {resetSuccess && (
-                <div className="bg-green-50 border border-green-200 text-green-600 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
+                <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
                   Senha alterada com sucesso! Pode entrar agora.
                 </div>
@@ -761,7 +759,7 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
             {resetStep === 'username' ? (
               <form onSubmit={handleResetStep1} className="space-y-4">
                 {resetError && (
-                  <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
+                  <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 flex-shrink-0" />
                     {resetError}
                   </div>
@@ -792,12 +790,12 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
             ) : (
               <form onSubmit={handleResetStep2} className="space-y-4">
                 {resetError && (
-                  <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
+                  <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 flex-shrink-0" />
                     {resetError}
                   </div>
                 )}
-                <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
+                <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
                   Conta verificada: <strong>{resetUsername}</strong>
                 </div>
@@ -1940,7 +1938,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       doc.rect(0, pageH - 12, pageWidth, 12, "F");
       doc.setFontSize(7);
       doc.setTextColor(168, 162, 158);
-      doc.text("© 2024 Procuradoria-Geral da República de Angola — Sistema de Controlo de Arguidos em Prisão Preventiva", pageWidth / 2, pageH - 5, { align: "center" });
+      doc.text(`© ${new Date().getFullYear()} Procuradoria-Geral da República de Angola — Sistema de Controlo de Arguidos em Prisão Preventiva`, pageWidth / 2, pageH - 5, { align: "center" });
       doc.text(`Gerado em ${new Date().toLocaleString("pt-AO")}`, pageWidth / 2, pageH - 1.5, { align: "center" });
 
       // Save
@@ -2493,7 +2491,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         <footer className="bg-stone-200 dark:bg-gray-900 text-pgr-text-muted dark:text-gray-400 border-t border-stone-200 dark:border-gray-800 py-3 px-4 text-center text-xs mt-auto">
           <div className="flex items-center justify-center gap-2">
             <Gavel className="h-3 w-3" />
-            <span>© 2024 Procuradoria-Geral da República de Angola — Sistema de Controlo de Arguidos em Prisão Preventiva</span>
+            <span>© {new Date().getFullYear()} Procuradoria-Geral da República de Angola — Sistema de Controlo de Arguidos em Prisão Preventiva</span>
           </div>
           {!pushSubscribed && notificationPermission !== 'denied' && (
             <button
@@ -2521,7 +2519,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
             </DialogHeader>
             <FormFields formData={formData} setFormData={setFormData} formErrors={formErrors} />
             {duplicateWarning && (
-              <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm rounded-lg px-4 py-3 mt-2 flex items-start gap-2">
+              <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm rounded-lg px-4 py-3 mt-2 flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">Aviso de possível duplicado</p>
@@ -2696,7 +2694,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 </div>
 
                 {/* Divider */}
-                <div className="border-t border-stone-200 my-1" />
+                <div className="border-t border-stone-200 dark:border-gray-700 my-1" />
 
                 {/* Total */}
                 <div className="flex items-center justify-between px-1">
@@ -2871,7 +2869,7 @@ function FormFields({ formData, setFormData, formErrors }: {
 
       {/* Calculated dates display */}
       {(formData.dataMedidasAplicadas || formData.dataProrrogacao) && (
-        <div className="md:col-span-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+        <div className="md:col-span-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
           <p className="text-xs font-medium text-amber-600 mb-1">📅 Prazos Calculados:</p>
           {formData.dataMedidasAplicadas && (
             <p className="text-xs text-amber-600">
@@ -3763,25 +3761,25 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="flex items-start gap-2 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+            <div className="flex items-start gap-2 p-3 bg-stone-50 dark:bg-gray-800 border border-stone-200 dark:border-gray-700 rounded-lg">
               <div className="w-2 h-2 bg-red-500 rounded-full mt-1.5 shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-red-500">Vencido</p>
-                <p className="text-sm text-red-500">Notificação imediata, registo de não conformidade</p>
+                <p className="text-sm font-semibold text-red-500 dark:text-red-400">Vencido</p>
+                <p className="text-sm text-red-500 dark:text-red-400">Notificação imediata, registo de não conformidade</p>
               </div>
             </div>
-            <div className="flex items-start gap-2 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+            <div className="flex items-start gap-2 p-3 bg-stone-50 dark:bg-gray-800 border border-stone-200 dark:border-gray-700 rounded-lg">
               <div className="w-2 h-2 bg-orange-500 rounded-full mt-1.5 shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-orange-600">Crítico</p>
-                <p className="text-sm text-orange-600">Alerta prioritário, destaque máximo</p>
+                <p className="text-sm font-semibold text-orange-600 dark:text-orange-400">Crítico</p>
+                <p className="text-sm text-orange-600 dark:text-orange-400">Alerta prioritário, destaque máximo</p>
               </div>
             </div>
-            <div className="flex items-start gap-2 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+            <div className="flex items-start gap-2 p-3 bg-stone-50 dark:bg-gray-800 border border-stone-200 dark:border-gray-700 rounded-lg">
               <div className="w-2 h-2 bg-amber-500 rounded-full mt-1.5 shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-amber-600">Atenção</p>
-                <p className="text-sm text-amber-600">Alerta preventivo, acompanhamento diário</p>
+                <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">Atenção</p>
+                <p className="text-sm text-amber-600 dark:text-amber-400">Alerta preventivo, acompanhamento diário</p>
               </div>
             </div>
           </div>
@@ -4833,11 +4831,11 @@ function DetailView({ arguido }: { arguido: Arguido }) {
                         <div className="mt-1 text-[10px] flex items-center gap-1.5 flex-wrap">
                           <span className="text-muted-foreground">{entry.fieldChanged}:</span>
                           {entry.oldValue && (
-                            <span className="bg-red-50 text-red-600 px-1.5 py-0.5 rounded line-through">{entry.oldValue}</span>
+                            <span className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded line-through">{entry.oldValue}</span>
                           )}
                           {entry.oldValue && entry.newValue && <span className="text-stone-300">→</span>}
                           {entry.newValue && (
-                            <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">{entry.newValue}</span>
+                            <span className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded font-medium">{entry.newValue}</span>
                           )}
                         </div>
                       )}
@@ -5209,7 +5207,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
           </div>
 
           {/* Warning */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
             <p className="text-sm text-amber-800">
               <strong>Atenção:</strong> A restauração irá sobrepor dados existentes. Certifique-se de ter um backup atualizado antes de prosseguir.
@@ -5218,7 +5216,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
 
           {/* Restore Results */}
           {restoreResult && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-2">
+            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-2">
               <p className="text-sm font-semibold text-green-800">Restauração concluída com sucesso:</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="bg-white rounded-md p-2 text-center">
@@ -5271,7 +5269,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
                 className="mt-1"
               />
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+            <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <p className="text-sm text-amber-800">
                 A restauração irá sobrepor dados existentes. Esta ação não pode ser desfeita.

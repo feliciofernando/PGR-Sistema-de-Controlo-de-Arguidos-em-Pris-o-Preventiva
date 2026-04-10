@@ -106,7 +106,7 @@ export async function GET() {
 
       if (vapidPublicKey && vapidPrivateKey) {
         webpush.setVapidDetails(
-          'mailto:pgr-angola@system.local',
+          'mailto:noreply@pgr-lunda-sul.com',
           vapidPublicKey,
           vapidPrivateKey
         );

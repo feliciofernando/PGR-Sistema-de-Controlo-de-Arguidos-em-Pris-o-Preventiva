@@ -27,12 +27,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ sent: 0, message: 'Nenhum subscritor encontrado' });
     }
 
+    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+
+    if (!vapidPublicKey || !vapidPrivateKey) {
+      return NextResponse.json({
+        error: 'Chaves VAPID não configuradas. Defina NEXT_PUBLIC_VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY nas variáveis de ambiente.',
+        sent: 0,
+      }, { status: 500 });
+    }
+
     const webpush = (await import('web-push')).default;
 
     webpush.setVapidDetails(
-      'mailto:pgr-angola@system.local',
-      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-      process.env.VAPID_PRIVATE_KEY!
+      'mailto:noreply@pgr-lunda-sul.com',
+      vapidPublicKey,
+      vapidPrivateKey
     );
 
     // Build notification payload — support summary format

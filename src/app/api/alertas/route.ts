@@ -194,7 +194,7 @@ async function checkDeadlines() {
 
       if (vapidPublicKey && vapidPrivateKey) {
         webpush.setVapidDetails(
-          'mailto:pgr-angola@system.local',
+          'mailto:noreply@pgr-lunda-sul.com',
           vapidPublicKey,
           vapidPrivateKey
         );
