@@ -2438,7 +2438,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                     const days2 = getDaysRemaining(a.fimSegundoPrazo);
                     const nearestDays = [days1, days2].filter(d => d !== null).sort((a, b) => a! - b!)[0] ?? null;
                     return (
-                      <TableRow key={a.id} className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'} text-pgr-text`}>
+                      <TableRow key={a.id} className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 hover:bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'} text-pgr-text`} onClick={() => onView(a)}>
                         <TableCell className="text-sm font-mono text-[#555] whitespace-nowrap">{a.numeroId}</TableCell>
                         <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[120px] truncate">{a.numeroProcesso}</p></TableCell>
                         <TableCell className="text-sm font-medium text-[#222]"><p className="max-w-[250px] truncate">{a.nomeArguido}</p></TableCell>
