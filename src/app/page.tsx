@@ -1456,7 +1456,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-stone-200/80 shadow-sm">
           <nav className="flex items-center">
             {/* Desktop Nav */}
-            <div className="hidden md:flex items-center gap-1 flex-1 px-3 py-1.5">
+            <div className="hidden md:flex items-center justify-center gap-2 flex-1 px-4 py-2">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeView === item.id;
@@ -1464,13 +1464,13 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   <button
                     key={item.id}
                     onClick={() => setActiveView(item.id)}
-                    className={`relative flex items-center gap-2 px-4 py-2 text-[13px] font-medium rounded-lg transition-all duration-200
+                    className={`relative flex items-center gap-2.5 px-5 py-2.5 text-[15px] font-semibold rounded-lg transition-all duration-200
                       ${isActive
                         ? "bg-stone-900 text-white shadow-md"
                         : "text-stone-500 hover:text-stone-800 hover:bg-stone-100/80"
                       }`}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-[18px] w-[18px]" />
                     {item.label}
                     {item.id === "alertas" && urgentCount > 0 && (
                       <span className="ml-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
