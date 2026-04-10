@@ -5301,15 +5301,15 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
           <CardDescription>Configure alertas automáticos por email para prazos processuais</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 flex items-start gap-2">
             <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-800">
-              <p className="font-medium">Configuração necessária</p>
+            <div className="text-sm text-blue-800 dark:text-blue-200">
+              <p className="font-medium">Configuração necessária (Gmail SMTP)</p>
               <p className="text-xs mt-1">Adicione estas variáveis de ambiente no Vercel (Settings → Environment Variables):</p>
-              <code className="block text-[11px] bg-blue-100 rounded px-2 py-1 mt-1 font-mono">
-                RESEND_API_KEY=re_xxxxx<br/>
-                ADMIN_EMAIL=seu.email@exemplo.com<br/>
-                EMAIL_FROM=PGR Sistema &lt;onboarding@resend.dev&gt;
+              <code className="block text-[11px] bg-blue-100 dark:bg-blue-900/50 rounded px-2 py-1 mt-1 font-mono">
+                SMTP_GMAIL_USER=seu-email@gmail.com<br/>
+                SMTP_GMAIL_APP_PASSWORD=sua-senha-de-app<br/>
+                ADMIN_EMAIL=seu-email@gmail.com
               </code>
             </div>
           </div>

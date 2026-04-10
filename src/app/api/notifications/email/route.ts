@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { isEmailConfigured, sendEmail, sendTestEmail } from '@/lib/email';
 
 // GET /api/notifications/email — Send email notifications for deadline warnings
-// This endpoint checks for upcoming deadlines and sends email alerts
-// Requires NEXT_PUBLIC_EMAIL_ENABLED=true and SMTP configuration (Resend, SendGrid, etc.)
+// Uses Gmail SMTP (nodemailer) — no Resend dependency
 export async function GET() {
   try {
     const emailEnabled = process.env.NEXT_PUBLIC_EMAIL_ENABLED === 'true';
@@ -11,17 +11,23 @@ export async function GET() {
     if (!emailEnabled) {
       return NextResponse.json({
         success: false,
-        message: 'Email notifications disabled. Set NEXT_PUBLIC_EMAIL_ENABLED=true and configure SMTP.',
-        hint: 'Configure RESEND_API_KEY or SMTP_* environment variables.',
+        message: 'Notificações por email desativadas. Defina NEXT_PUBLIC_EMAIL_ENABLED=true.',
+        hint: 'Configure SMTP_GMAIL_USER e SMTP_GMAIL_APP_PASSWORD nas variáveis de ambiente.',
+      });
+    }
+
+    if (!isEmailConfigured()) {
+      return NextResponse.json({
+        success: false,
+        message: 'SMTP Gmail não configurado.',
+        hint: 'Defina SMTP_GMAIL_USER e SMTP_GMAIL_APP_PASSWORD nas variáveis de ambiente (Vercel ou .env.local).',
       });
     }
 
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-    // Fetch arguidos with deadlines expiring within 7 days (still ativo or vencido)
+    // Fetch arguidos with deadlines expiring within 7 days
     const { data: urgentArguidos, error } = await supabase
       .from('arguidos')
       .select('id, numero_id, numero_processo, nome_arguido, fim_primeiro_prazo, fim_segundo_prazo, magistrado, status')
@@ -37,13 +43,12 @@ export async function GET() {
       return NextResponse.json({
         success: true,
         sent: 0,
-        message: 'No urgent deadlines found.',
+        message: 'Nenhum prazo urgente encontrado.',
       });
     }
 
     // Categorize by urgency
     interface UrgentItem {
-      id: number;
       numeroId: string;
       numeroProcesso: string;
       nomeArguido: string;
@@ -69,7 +74,6 @@ export async function GET() {
           else if (days <= 3) urgency = 'critico';
 
           items.push({
-            id: a.id,
             numeroId: a.numero_id,
             numeroProcesso: a.numero_processo,
             nomeArguido: a.nome_arguido,
@@ -83,13 +87,11 @@ export async function GET() {
       }
     }
 
-    // Sort by urgency (expirado first, then critico, then atencao)
     items.sort((a, b) => {
       const order = { expirado: 0, critico: 1, atencao: 2 };
       return order[a.urgency] - order[b.urgency];
     });
 
-    // Build email content
     const expirados = items.filter(i => i.urgency === 'expirado');
     const criticos = items.filter(i => i.urgency === 'critico');
     const atencao = items.filter(i => i.urgency === 'atencao');
@@ -97,68 +99,76 @@ export async function GET() {
     const subject = `🔔 PGR Angola — Alerta de Prazos (${expirados.length} expirados, ${criticos.length} críticos)`;
     const htmlBody = buildEmailHTML(expirados, criticos, atencao);
 
-    // Try to send via Resend (if API key configured)
-    const resendApiKey = process.env.RESEND_API_KEY;
     const adminEmail = process.env.ADMIN_EMAIL || '';
-    const emailFrom = process.env.EMAIL_FROM || 'PGR Sistema <noreply@pgr-lunda-sul.com>';
-
-    if (resendApiKey && adminEmail) {
-      try {
-        const resendRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: emailFrom,
-            to: [adminEmail],
-            subject,
-            html: htmlBody,
-          }),
-        });
-
-        if (resendRes.ok) {
-          const resendData = await resendRes.json();
-          return NextResponse.json({
-            success: true,
-            provider: 'resend',
-            sent: items.length,
-            emailId: resendData.id,
-            summary: {
-              expirados: expirados.length,
-              criticos: criticos.length,
-              atencao: atencao.length,
-            },
-          });
-        } else {
-          const errData = await resendRes.json();
-          return NextResponse.json({
-            success: false,
-            provider: 'resend',
-            error: errData,
-            message: `Resend API error: ${errData?.name || errData?.message || 'Unknown'}`,
-            hint: errData?.message?.includes('domain') ? 'Verify your domain in Resend or use onboarding@resend.dev' : 'Check API key and domain settings.',
-          });
-        }
-      } catch (emailErr) {
-        console.error('Resend API error:', emailErr);
-      }
+    if (!adminEmail) {
+      return NextResponse.json({
+        success: false,
+        message: 'ADMIN_EMAIL não definido.',
+        hint: 'Defina ADMIN_EMAIL nas variáveis de ambiente (email do destinatário dos alertas).',
+        preview: { expirados: expirados.length, criticos: criticos.length, atencao: atencao.length },
+      });
     }
 
-    // Return summary even if email not configured (for preview/testing)
+    // Send via Gmail SMTP
+    const result = await sendEmail({ to: adminEmail, subject, html: htmlBody });
+
+    if (result.success) {
+      return NextResponse.json({
+        success: true,
+        provider: 'gmail-smtp',
+        sent: items.length,
+        messageId: result.messageId,
+        summary: { expirados: expirados.length, criticos: criticos.length, atencao: atencao.length },
+      });
+    }
+
     return NextResponse.json({
-      success: true,
-      provider: 'none',
-      sent: 0,
-      message: 'Email service not configured. Preview generated.',
+      success: false,
+      provider: 'gmail-smtp',
+      error: result.error,
+      message: 'Falha ao enviar email via Gmail SMTP.',
       preview: { expirados: expirados.length, criticos: criticos.length, atencao: atencao.length },
-      htmlPreview: htmlBody.substring(0, 500) + '...',
-      configHint: 'Set RESEND_API_KEY and ADMIN_EMAIL in .env.local to enable email notifications.',
     });
   } catch (error) {
     console.error('Email notification error:', error);
     return NextResponse.json({ error: 'Failed to process email notifications' }, { status: 500 });
+  }
+}
+
+// POST /api/notifications/email — Send a test email
+export async function POST() {
+  try {
+    if (!isEmailConfigured()) {
+      return NextResponse.json({
+        success: false,
+        message: 'SMTP Gmail não configurado.',
+        hint: 'Defina SMTP_GMAIL_USER e SMTP_GMAIL_APP_PASSWORD nas variáveis de ambiente.',
+      });
+    }
+
+    const adminEmail = process.env.ADMIN_EMAIL || '';
+    if (!adminEmail) {
+      return NextResponse.json({
+        success: false,
+        message: 'ADMIN_EMAIL não definido.',
+        hint: 'Defina ADMIN_EMAIL (email do destinatário) nas variáveis de ambiente.',
+      });
+    }
+
+    const result = await sendTestEmail(adminEmail);
+
+    if (result.success) {
+      return NextResponse.json({ success: true, messageId: result.messageId, sentTo: adminEmail, provider: 'gmail-smtp' });
+    }
+
+    return NextResponse.json({
+      success: false,
+      error: result.error,
+      hint: 'Verifique SMTP_GMAIL_USER e SMTP_GMAIL_APP_PASSWORD. Para Gmail, use uma "Senha de App" (não a senha normal).',
+    }, { status: 500 });
+  } catch (error) {
+    console.error('Test email error:', error);
+    return NextResponse.json({ error: 'Failed to send test email' }, { status: 500 });
   }
 }
 
@@ -241,74 +251,10 @@ function buildEmailHTML(
 
       <div style="margin-top:20px;padding-top:15px;border-top:1px solid #eee;font-size:11px;color:#999;">
         <p>Este email foi gerado automaticamente pelo Sistema de Controlo de Arguidos em Prisão Preventiva da PGR Angola.</p>
-        <p>Não responda a este email. Para questões, contacte o administrador do sistema.</p>
+        <p>Enviado via Gmail SMTP. Não responda a este email.</p>
       </div>
     </div>
   </div>
 </body>
 </html>`;
-}
-
-// POST /api/notifications/email — Send a test email
-export async function POST() {
-  try {
-    const resendApiKey = process.env.RESEND_API_KEY;
-    const adminEmail = process.env.ADMIN_EMAIL || '';
-    const emailFrom = process.env.EMAIL_FROM || 'PGR Sistema <noreply@pgr-lunda-sul.com>';
-
-    if (!resendApiKey || !adminEmail) {
-      return NextResponse.json({
-        success: false,
-        message: 'Email service not configured.',
-        configHint: 'Add RESEND_API_KEY and ADMIN_EMAIL to .env.local or Vercel env vars to enable email.',
-        testResult: `Would send test email to ${adminEmail || '(not set)'}`,
-      });
-    }
-
-    const testHtml = `
-<!DOCTYPE html>
-<html><body style="font-family:Arial,sans-serif;padding:20px;">
-  <div style="max-width:600px;margin:0 auto;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-    <div style="background:#c2410c;padding:20px 30px;">
-      <h1 style="color:white;margin:0;">⚖️ PGR Angola — Email de Teste</h1>
-    </div>
-    <div style="padding:20px 30px;">
-      <p>Este é um email de teste do <strong>Sistema de Controlo de Arguidos em Prisão Preventiva</strong>.</p>
-      <p>Se recebeu este email, as notificações por email estão a funcionar corretamente.</p>
-      <p style="color:#888;font-size:12px;">Enviado em: ${new Date().toLocaleString('pt-AO')}</p>
-    </div>
-  </div>
-</body></html>`;
-
-    const resendRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: emailFrom,
-        to: [adminEmail],
-        subject: '📧 PGR Angola — Email de Teste',
-        html: testHtml,
-      }),
-    });
-
-    if (resendRes.ok) {
-      const data = await resendRes.json();
-      return NextResponse.json({ success: true, emailId: data.id, sentTo: adminEmail });
-    }
-
-    const errorData = await resendRes.json();
-    return NextResponse.json({ 
-      success: false, 
-      error: errorData,
-      hint: errorData?.message?.includes('domain') 
-        ? 'Verify your domain in Resend Dashboard → Domains. Or use onboarding@resend.dev for testing.' 
-        : 'Check your API key and configuration.',
-    }, { status: 500 });
-  } catch (error) {
-    console.error('Test email error:', error);
-    return NextResponse.json({ error: 'Failed to send test email' }, { status: 500 });
-  }
 }
