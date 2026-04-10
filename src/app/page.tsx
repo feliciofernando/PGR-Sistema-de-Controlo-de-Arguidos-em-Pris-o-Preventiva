@@ -1416,23 +1416,158 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     }
   };
 
-  const handleExportCSV = () => {
-    if (arguidos.length === 0) return;
-    const headers = ["ID", "Nº Processo", "Nome", "Crime", "Magistrado", "Medidas", "Fim 1º Prazo", "Fim 2º Prazo", "Status"];
-    const rows = arguidos.map(a => [
-      a.numeroId, a.numeroProcesso, a.nomeArguido, a.crime, a.magistrado,
-      a.medidasAplicadas, a.fimPrimeiroPrazo ? formatDate(a.fimPrimeiroPrazo) : "",
-      a.fimSegundoPrazo ? formatDate(a.fimSegundoPrazo) : "", a.status,
-    ]);
-    const csv = [headers.join(","), ...rows.map(r => r.map(c => `"${c}"`).join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `arguidos_pgr_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast({ title: "Exportação CSV concluída!" });
+  const handleExportPDF = async () => {
+    if (arguidos.length === 0) {
+      toast({ title: "Sem dados", description: "Nenhum arguido para exportar.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      toast({ title: "A gerar PDF...", description: `${arguidos.length} arguidos a exportar` });
+
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
+      // Landscape orientation
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 10;
+
+      // === HEADER ===
+      doc.setFillColor(194, 65, 12);
+      doc.rect(0, 0, pageW, 18, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("PGR ANGOLA", margin + 2, 9);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text("Sistema de Controlo de Arguidos em Prisão Preventiva", margin + 2, 14);
+
+      // Right side: date + count
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 255, 255, 0.7);
+      doc.text(`Exportado em: ${new Date().toLocaleString("pt-AO")}`, pageW - margin - 2, 9, { align: "right" });
+      doc.text(`Total: ${arguidos.length} arguido${arguidos.length !== 1 ? "s" : ""}`, pageW - margin - 2, 14, { align: "right" });
+
+      // === TABLE ===
+      const headers = [
+        ["ID", "Nº Processo", "Nome do Arguido", "Nome do Pai", "Nome da Mãe", "Crime", "Magistrado", "Medidas", "Detenção", "1º Prazo", "Prazo", "2º Prazo", "Prazo", "Status"],
+      ];
+
+      const rows = arguidos.map(a => {
+        const days1 = getDaysRemaining(a.fimPrimeiroPrazo);
+        const days2 = getDaysRemaining(a.fimSegundoPrazo);
+        return [
+          a.numeroId,
+          a.numeroProcesso,
+          a.nomeArguido || "—",
+          a.nomePai || "—",
+          a.nomeMae || "—",
+          a.crime || "—",
+          a.magistrado || "—",
+          a.medidasAplicadas || "—",
+          formatDate(a.dataDetencao),
+          formatDate(a.fimPrimeiroPrazo),
+          days1 !== null ? getDeadlineLabel(days1) : "—",
+          formatDate(a.fimSegundoPrazo),
+          days2 !== null ? getDeadlineLabel(days2) : "—",
+          a.status.charAt(0).toUpperCase() + a.status.slice(1),
+        ];
+      });
+
+      autoTable(doc, {
+        startY: 21,
+        head: headers,
+        body: rows,
+        theme: "grid",
+        styles: {
+          fontSize: 7.5,
+          cellPadding: 2.5,
+          lineColor: [210, 210, 210],
+          lineWidth: 0.3,
+          textColor: [40, 40, 40],
+          font: "helvetica",
+          overflow: "linebreak",
+        },
+        headStyles: {
+          fillColor: [60, 60, 60],
+          textColor: 255,
+          fontStyle: "bold",
+          fontSize: 7.5,
+          halign: "center",
+          valign: "middle",
+          cellPadding: 3,
+        },
+        alternateRowStyles: {
+          fillColor: [248, 248, 248],
+        },
+        columnStyles: {
+          0: { cellWidth: 18, halign: "center" },  // ID
+          1: { cellWidth: 28 },                       // Nº Processo
+          2: { cellWidth: 38 },                       // Nome
+          3: { cellWidth: 30 },                       // Pai
+          4: { cellWidth: 30 },                       // Mãe
+          5: { cellWidth: 28 },                       // Crime
+          6: { cellWidth: 25 },                       // Magistrado
+          7: { cellWidth: 26 },                       // Medidas
+          8: { cellWidth: 20, halign: "center" },    // Detenção
+          9: { cellWidth: 20, halign: "center" },    // 1º Prazo
+          10: { cellWidth: 24, halign: "center" },   // Prazo label
+          11: { cellWidth: 20, halign: "center" },   // 2º Prazo
+          12: { cellWidth: 24, halign: "center" },   // Prazo label
+          13: { cellWidth: 17, halign: "center" },   // Status
+        },
+        didParseCell: (data) => {
+          // Color code the deadline labels (columns 10 and 12)
+          if (data.section === "body" && (data.column.index === 10 || data.column.index === 12)) {
+            const text = String(data.cell.raw);
+            if (text.includes("Vencido")) {
+              data.cell.styles.textColor = [180, 30, 30];
+              data.cell.styles.fontStyle = "bold";
+            } else if (text.includes("amanhã") || text.includes("hoje")) {
+              data.cell.styles.textColor = [200, 80, 20];
+              data.cell.styles.fontStyle = "bold";
+            } else if (text.includes("dias restantes")) {
+              data.cell.styles.textColor = [80, 130, 60];
+            }
+          }
+          // Color code status (column 13)
+          if (data.section === "body" && data.column.index === 13) {
+            const text = String(data.cell.raw).toLowerCase();
+            if (text === "vencido") {
+              data.cell.styles.textColor = [180, 30, 30];
+              data.cell.styles.fontStyle = "bold";
+            } else if (text === "ativo") {
+              data.cell.styles.textColor = [28, 61, 90];
+              data.cell.styles.fontStyle = "bold";
+            } else if (text === "encerrado") {
+              data.cell.styles.textColor = [120, 120, 120];
+            }
+          }
+        },
+        margin: { left: margin, right: margin, top: 21, bottom: 15 },
+      });
+
+      // === FOOTER on each page ===
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFillColor(240, 240, 240);
+        doc.rect(0, pageH - 8, pageW, 8, "F");
+        doc.setFontSize(6.5);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`PGR Angola © ${new Date().getFullYear()} — Sistema de Controlo de Arguidos em Prisão Preventiva`, margin, pageH - 3.5);
+        doc.text(`Página ${i} de ${pageCount}`, pageW - margin, pageH - 3.5, { align: "right" });
+      }
+
+      doc.save(`Arguidos_PGR_${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast({ title: "PDF exportado!", description: `${arguidos.length} arguidos em ${pageCount} página${pageCount !== 1 ? "s" : ""}` });
+    } catch (err) {
+      console.error("PDF export error:", err);
+      toast({ title: "Erro", description: "Falha ao gerar PDF.", variant: "destructive" });
+    }
   };
 
   // Navigation items
@@ -1653,7 +1788,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   onView={(a) => fetchAndShowDetail(a.id)}
                   onPdf={handleDownloadPdf}
                   onRefresh={loadArguidos}
-                  onExport={handleExportCSV}
+                  onExport={handleExportPDF}
                   onNew={handleOpenCreate}
                 />
               )}
@@ -2405,7 +2540,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={onRefresh}><RefreshCw className="h-4 w-4" /></Button>
-          <Button variant="outline" size="sm" onClick={onExport}><Download className="h-4 w-4 mr-1" /> Exportar</Button>
+          <Button variant="outline" size="sm" onClick={onExport}><FileText className="h-4 w-4 mr-1" /> Exportar PDF</Button>
           <Button size="sm" className="bg-[#D35400] hover:bg-[#E67E22]" onClick={onNew}>
             <Plus className="h-4 w-4 mr-1" /> Novo
           </Button>
