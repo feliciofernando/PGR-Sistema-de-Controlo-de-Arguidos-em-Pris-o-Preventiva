@@ -387,3 +387,27 @@ Stage Summary:
 - LandingPage and LoginPage unchanged (already have custom dark backgrounds)
 - No new SQL tables needed
 - No new API routes needed
+
+---
+Task ID: 8
+Agent: Main Agent
+Task: Configure Gmail SMTP credentials for email system (replace Resend)
+
+Work Log:
+- Verified no Resend references remain in codebase (only a comment in notifications/email/route.ts confirming "no Resend dependency")
+- System already migrated to Gmail SMTP via nodemailer in previous session
+- Updated .env.local with real Gmail credentials:
+  - SMTP_GMAIL_USER=feliciofernando567@gmail.com
+  - SMTP_GMAIL_APP_PASSWORD=jplbtbrivfsiulti
+  - ADMIN_EMAIL=feliciofernando567@gmail.com
+- Dev server auto-reloaded env vars (confirmed via dev.log: "Reload env: .env.local")
+- ESLint passes with 0 errors
+- Tested POST /api/notifications/email (test email) → SUCCESS, messageId received
+- Tested GET /api/notifications/email (deadline alerts) → SUCCESS, 8 items sent (6 expirados, 2 críticos)
+- .env.local is gitignored — credentials NOT committed to GitHub (security best practice)
+
+Stage Summary:
+- Gmail SMTP fully operational via nodemailer
+- Test email and deadline alert emails both delivered successfully
+- No code changes needed — system was already migrated from Resend to Gmail SMTP
+- User needs to set SMTP_GMAIL_USER, SMTP_GMAIL_APP_PASSWORD, ADMIN_EMAIL in Vercel Environment Variables
