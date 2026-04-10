@@ -29,8 +29,6 @@ import {
   Edit,
   Trash2,
   Eye,
-  ChevronLeft,
-  ChevronRight,
   AlertTriangle,
   AlertCircle,
   CheckCircle2,
@@ -602,10 +600,8 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
   const [filterCrime, setFilterCrime] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterPrazo, setFilterPrazo] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-  const pageSize = 15;
+  const pageSize = 500;
 
   // Fetch data - using refs to avoid lint issues with setState in effects
   const loadInitialData = async () => {
@@ -640,14 +636,13 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         crime: filterCrime,
         status: filterStatus,
         prazoFilter: filterPrazo,
-        page: currentPage.toString(),
+        page: '1',
         pageSize: pageSize.toString(),
       });
       const res = await fetch(`/api/arguidos?${params}`);
       if (res.ok) {
         const data = await res.json();
         setArguidos(data.data);
-        setTotalPages(data.pagination.totalPages);
         setTotalRecords(data.pagination.total);
       }
     } catch (e) { console.error(e); }
@@ -708,7 +703,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
   useEffect(() => {
     if (activeView === "gestao") loadArguidos();
-  }, [activeView, searchTerm, filterCrime, filterStatus, filterPrazo, currentPage]);
+  }, [activeView, searchTerm, filterCrime, filterStatus, filterPrazo]);
 
   // Register Service Worker
   const registerServiceWorker = async (): Promise<boolean> => {
@@ -1621,9 +1616,6 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   setFilterStatus={setFilterStatus}
                   filterPrazo={filterPrazo}
                   setFilterPrazo={setFilterPrazo}
-                  currentPage={currentPage}
-                  setCurrentPage={setCurrentPage}
-                  totalPages={totalPages}
                   totalRecords={totalRecords}
                   onEdit={handleOpenEdit}
                   onDelete={(id) => setDeleteDialog(id)}
@@ -2342,15 +2334,14 @@ function CadastroView({ formData, setFormData, onSubmit }: {
 }
 
 // ===================== GESTÃO VIEW =====================
-function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, currentPage, setCurrentPage, totalPages, totalRecords, onEdit, onDelete, onView, onPdf, onRefresh, onExport, onNew }: {
+function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, totalRecords, onEdit, onDelete, onView, onPdf, onRefresh, onExport, onNew }: {
   arguidos: Arguido[];
   loading: boolean;
   searchTerm: string; setSearchTerm: (v: string) => void;
   filterCrime: string; setFilterCrime: (v: string) => void;
   filterStatus: string; setFilterStatus: (v: string) => void;
   filterPrazo: string; setFilterPrazo: (v: string) => void;
-  currentPage: number; setCurrentPage: (v: number) => void;
-  totalPages: number; totalRecords: number;
+  totalRecords: number;
   onEdit: (a: Arguido) => void;
   onDelete: (id: number) => void;
   onView: (a: Arguido) => void;
@@ -2384,12 +2375,12 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
               <Input
                 placeholder="Pesquisar por nome, Nº processo ou ID..."
                 value={searchTerm}
-                onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                onChange={e => setSearchTerm(e.target.value)}
                 className="pl-9 bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary placeholder:text-stone-400"
               />
             </div>
             <div className="flex gap-2 flex-wrap">
-              <Select value={filterStatus} onValueChange={v => { setFilterStatus(v === "todos" ? "" : v); setCurrentPage(1); }}>
+              <Select value={filterStatus} onValueChange={v => setFilterStatus(v === "todos" ? "" : v)}>
                 <SelectTrigger className="w-36 bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos Status</SelectItem>
@@ -2398,7 +2389,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                   <SelectItem value="encerrado">Encerrado</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={filterPrazo} onValueChange={v => { setFilterPrazo(v === "todos" ? "" : v); setCurrentPage(1); }}>
+              <Select value={filterPrazo} onValueChange={v => setFilterPrazo(v === "todos" ? "" : v)}>
                 <SelectTrigger className="w-40 bg-stone-100 text-pgr-text border-stone-200 focus:border-pgr-primary"><SelectValue placeholder="Prazo" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos Prazos</SelectItem>
@@ -2415,7 +2406,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
 
       {/* Table */}
       <Card className="bg-pgr-surface border border-stone-200">
-        <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[500px]">
+        <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[calc(100vh-320px)] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <RefreshCw className="h-6 w-6 animate-spin text-pgr-text-muted" />
@@ -2480,29 +2471,11 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                   })}
                 </TableBody>
               </Table>
-              {/* Pagination */}
-              <div className="flex items-center justify-between px-4 py-3 border-t border-stone-200">
+              {/* Footer with total count */}
+              <div className="flex items-center justify-center px-4 py-3 border-t border-stone-200">
                 <p className="text-sm text-pgr-text-muted">
-                  Página {currentPage} de {totalPages} ({totalRecords} registo{totalRecords !== 1 ? "s" : ""})
+                  {totalRecords} registo{totalRecords !== 1 ? "s" : ""}
                 </p>
-                <div className="flex gap-1">
-                  <Button variant="outline" size="icon" className="h-7 w-7 border-stone-200 text-pgr-text-muted hover:text-stone-900 hover:bg-stone-100" disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
-                    const page = start + i;
-                    if (page > totalPages) return null;
-                    return (
-                      <Button key={page} variant={page === currentPage ? "default" : "outline"} size="icon" className={`h-7 w-7 text-xs ${page === currentPage ? 'bg-pgr-primary text-white' : 'border-stone-200 text-pgr-text-muted hover:text-stone-900 hover:bg-stone-100'}`} onClick={() => setCurrentPage(page)}>
-                        {page}
-                      </Button>
-                    );
-                  })}
-                  <Button variant="outline" size="icon" className="h-7 w-7 border-stone-200 text-pgr-text-muted hover:text-stone-900 hover:bg-stone-100" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(currentPage + 1)}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
               </div>
             </>
           )}
