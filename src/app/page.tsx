@@ -2677,16 +2677,16 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
           <div className="fixed inset-0 z-[100] flex items-start justify-center pt-4 px-4 pointer-events-none">
             {/* Backdrop */}
             <div
-              className="absolute inset-0 bg-black/30 pointer-events-auto"
+              className="absolute inset-0 bg-black/40 dark:bg-black/60 pointer-events-auto"
               onClick={() => setInAppNotification(null)}
             />
             {/* Notification Card */}
             <div
-              className="relative pointer-events-auto w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden bg-white border border-stone-200"
+              className="relative pointer-events-auto w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden bg-white dark:bg-gray-900 border border-stone-200 dark:border-gray-700"
               style={{ animation: 'slideInAppNotification 0.4s ease-out' }}
             >
               {/* Header — PGR Angola branding */}
-              <div className="bg-stone-800 px-5 py-4">
+              <div className="bg-stone-800 dark:bg-stone-900 px-5 py-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center backdrop-blur-sm">
                     <Scale className="h-5 w-5 text-white" />
@@ -2705,27 +2705,27 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 </div>
               )}
               {!inAppNotification.hasUrgent && (
-                <div className="h-1 bg-stone-300" />
+                <div className="h-1 bg-stone-300 dark:bg-gray-700" />
               )}
 
               {/* Summary Rows */}
               <div className="px-5 py-4 space-y-2.5">
                 {/* Expirados */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-red-500/10 border border-red-500/20">
-                  <div className="w-9 h-9 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
-                    <AlertCircle className="h-4.5 w-4.5 text-red-500" />
+                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-red-500/10 dark:bg-red-900/30 border border-red-500/20 dark:border-red-800/40">
+                  <div className="w-9 h-9 rounded-lg bg-red-500/20 dark:bg-red-900/50 flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="h-4.5 w-4.5 text-red-500 dark:text-red-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-red-600">
+                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">
                       {inAppNotification.expirados} Prazo(s) Expirado(s)
                     </p>
-                    <p className="text-[11px] text-red-500">Expirados</p>
+                    <p className="text-[11px] text-red-500 dark:text-red-400/80">Expirados</p>
                   </div>
-                  <span className="text-xl font-bold text-red-500">{inAppNotification.expirados}</span>
+                  <span className="text-xl font-bold text-red-500 dark:text-red-400">{inAppNotification.expirados}</span>
                 </div>
 
                 {/* Críticos */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800">
+                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/40">
                   <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
                     <AlertTriangle className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
                   </div>
@@ -2733,37 +2733,37 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                     <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
                       {inAppNotification.criticos} Caso(s) Crítico(s)
                     </p>
-                    <p className="text-[11px] text-amber-500 dark:text-amber-400">Prazo muito próximo</p>
+                    <p className="text-[11px] text-amber-500 dark:text-amber-400/80">Prazo muito próximo</p>
                   </div>
                   <span className="text-xl font-bold text-amber-600 dark:text-amber-400">{inAppNotification.criticos}</span>
                 </div>
 
                 {/* Atenção */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800">
-                  <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
+                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30">
+                  <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
                     <Clock className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-300">
                       {inAppNotification.atencao} Caso(s) em estado de Atenção
                     </p>
-                    <p className="text-[11px] text-amber-600">Prazo próximo</p>
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400/80">Prazo próximo</p>
                   </div>
-                  <span className="text-xl font-bold text-amber-600">{inAppNotification.atencao}</span>
+                  <span className="text-xl font-bold text-amber-600 dark:text-amber-400">{inAppNotification.atencao}</span>
                 </div>
 
                 {/* Normal */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                    <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600" />
+                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-emerald-600">
+                    <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
                       {inAppNotification.normal} Caso(s) em estado Normal
                     </p>
-                    <p className="text-[11px] text-emerald-600">Dentro do prazo</p>
+                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400/80">Dentro do prazo</p>
                   </div>
-                  <span className="text-xl font-bold text-emerald-600">{inAppNotification.normal}</span>
+                  <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{inAppNotification.normal}</span>
                 </div>
 
                 {/* Divider */}
@@ -2771,7 +2771,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
                 {/* Total */}
                 <div className="flex items-center justify-between px-1">
-                  <p className="text-xs font-medium text-pgr-text-muted">Total de Casos</p>
+                  <p className="text-xs font-medium text-pgr-text-muted dark:text-gray-400">Total de Casos</p>
                   <p className="text-sm font-bold text-pgr-text dark:text-gray-100">{inAppNotification.total}</p>
                 </div>
               </div>
@@ -2783,7 +2783,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   className={`flex-1 text-white text-sm font-semibold ${
                     inAppNotification.hasUrgent
                       ? 'bg-red-600 hover:bg-red-700'
-                      : 'bg-stone-800 hover:bg-stone-700'
+                      : 'bg-stone-800 hover:bg-stone-700 dark:bg-orange-700 dark:hover:bg-orange-600'
                   }`}
                   onClick={() => {
                     setInAppNotification(null);
@@ -2795,7 +2795,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-sm"
+                  className="text-sm dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
                   onClick={() => setInAppNotification(null)}
                 >
                   Fechar
