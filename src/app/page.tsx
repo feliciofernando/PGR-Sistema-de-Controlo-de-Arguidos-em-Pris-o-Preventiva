@@ -2155,7 +2155,9 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     }
   };
 
-  const handleExportSelectedPDF = async (selectedArguidos: Arguido[]) => {
+  const handleExportSelectedPDF = async (selectedIds: number[]) => {
+    // Resolve IDs to Arguido objects
+    const selectedArguidos = arguidos.filter(a => selectedIds.includes(a.id));
     if (selectedArguidos.length === 0) {
       toast({ title: "Sem seleção", description: "Nenhum arguido selecionado.", variant: "destructive" });
       return;
