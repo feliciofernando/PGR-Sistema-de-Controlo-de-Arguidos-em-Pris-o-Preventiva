@@ -282,3 +282,36 @@ async function checkDeadlines() {
     alerts: newAlertas,
   });
 }
+
+// DELETE /api/alertas - Bulk delete alerts by IDs
+export async function DELETE(request: NextRequest) {
+  try {
+    const { ids } = await request.json();
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: 'IDs são obrigatórios' }, { status: 400 });
+    }
+
+    if (ids.length > 500) {
+      return NextResponse.json({ error: 'Máximo de 500 alertas por operação' }, { status: 400 });
+    }
+
+    const { error } = await supabase
+      .from('alertas')
+      .delete()
+      .in('id', ids);
+
+    if (error) {
+      console.error('Supabase delete error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      deleted: ids.length,
+    });
+  } catch (error) {
+    console.error('Error deleting alertas:', error);
+    return NextResponse.json({ error: 'Failed to delete alertas' }, { status: 500 });
+  }
+}

@@ -1480,6 +1480,27 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     } catch (e) { console.error(e); }
   };
 
+  const handleDeleteAlertas = async (ids: number[]) => {
+    try {
+      const res = await fetch("/api/alertas", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast({ title: "Alertas eliminados", description: `${data.deleted} alerta(s) eliminado(s) com sucesso.` });
+        loadAlertas();
+        loadStats();
+      } else {
+        const data = await res.json();
+        toast({ title: "Erro", description: data.error || "Falha ao eliminar alertas.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro", description: "Erro de ligação ao servidor.", variant: "destructive" });
+    }
+  };
+
   // CRUD handlers
   const handleOpenCreate = () => {
     setFormData(emptyArguido);
@@ -2518,6 +2539,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   onCheck={checkDeadlines}
                   onTestNotification={handleTestNotification}
                   onView={(id) => fetchAndShowDetail(id)}
+                  onDeleteSelected={handleDeleteAlertas}
                 />
               )}
 
@@ -3682,13 +3704,46 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
 }
 
 // ===================== ALERTAS VIEW =====================
-function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
+function AlertasView({ alertas, stats, onCheck, onTestNotification, onView, onDeleteSelected }: {
   alertas: AlertaItem[];
   stats: DashboardStats | null;
   onCheck: () => void;
   onTestNotification: () => void;
   onView: (id: number) => void;
+  onDeleteSelected: (ids: number[]) => void;
 }) {
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const allSelected = alertas.length > 0 && selectedIds.size === alertas.length;
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(alertas.map(a => a.id)));
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size > 0) {
+      setDeleteDialogOpen(true);
+    }
+  };
+
+  const confirmDelete = () => {
+    onDeleteSelected(Array.from(selectedIds));
+    setSelectedIds(new Set());
+    setDeleteDialogOpen(false);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -3736,6 +3791,30 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
         </div>
       )}
 
+      {/* Bulk Action Bar — shown when alerts are selected */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-stone-800 rounded-lg shadow-md animate-[fadeIn_0.2s_ease-out]">
+          <span className="text-sm text-white font-medium">{selectedIds.size} selecionado{selectedIds.size > 1 ? 's' : ''}</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs text-red-400 hover:text-white hover:bg-red-600"
+            onClick={handleBulkDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" /> Eliminar Selecionados
+          </Button>
+          <div className="w-px h-6 bg-stone-600" />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs text-stone-400 hover:text-white hover:bg-stone-700"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Limpar
+          </Button>
+        </div>
+      )}
+
       {/* Alert History - Table */}
       <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardHeader className="pb-2">
@@ -3754,6 +3833,13 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
               <Table>
                 <TableHeader className="sticky top-0 z-10">
                   <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+                  <TableHead className="w-[40px] text-center">
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={toggleAll}
+                      className="border-white/50 data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
+                    />
+                  </TableHead>
                   <TableHead className="text-sm font-semibold text-white">Prazo</TableHead>
                   <TableHead className="text-sm font-semibold text-white">Tipo</TableHead>
                   <TableHead className="text-sm font-semibold text-white">Mensagem</TableHead>
@@ -3766,9 +3852,16 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
                 {alertas.map((alerta, idx) => (
                   <TableRow
                     key={alerta.id}
-                    className={`cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`}
+                    className={`cursor-pointer transition-colors ${selectedIds.has(alerta.id) ? 'bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30' : idx % 2 === 0 ? 'bg-stone-50 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700' : 'bg-stone-100 dark:bg-gray-800/60 hover:bg-stone-200 dark:hover:bg-gray-700'} text-pgr-text dark:text-gray-100`}
                     onClick={() => alerta.arguidoId && onView(alerta.arguidoId)}
                   >
+                    <TableCell className="py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(alerta.id)}
+                        onCheckedChange={() => toggleSelect(alerta.id)}
+                        className="border-stone-400 data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
+                      />
+                    </TableCell>
                     <TableCell className="py-2.5">
                       <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded whitespace-nowrap ${getDeadlineColor(alerta.diasRestantes)}`}>
                         {getDeadlineLabel(alerta.diasRestantes)}
@@ -3804,6 +3897,31 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView }: {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Eliminar Alertas
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem a certeza que deseja eliminar <strong>{selectedIds.size} alerta{selectedIds.size > 1 ? 's' : ''}</strong> selecionado{selectedIds.size > 1 ? 's' : ''}?
+              Esta ação não pode ser revertida.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={confirmDelete}
+            >
+              <Trash2 className="h-4 w-4 mr-1" /> Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Alert Rules */}
       <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
