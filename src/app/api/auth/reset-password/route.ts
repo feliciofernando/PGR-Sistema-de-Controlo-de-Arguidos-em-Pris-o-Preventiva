@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       redirectTo: siteUrl,
     });
 
-    if (linkError || !linkData?.action_link) {
+    if (linkError || !linkData?.properties?.action_link) {
       console.error('[Auth] Generate link error:', linkError);
       return NextResponse.json({
         success: false,
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Send email via Gmail SMTP (nodemailer)
-    const recoveryLink = linkData.action_link;
+    const recoveryLink = linkData.properties.action_link;
     const html = `
 <!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;padding:20px;margin:0;background:#f5f5f5;">
