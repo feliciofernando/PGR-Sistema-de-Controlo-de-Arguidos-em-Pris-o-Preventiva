@@ -674,8 +674,72 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
         }}
       />
 
-      {/* Login Card — centered on top of fog background */}
       <div className="relative z-10 w-full max-w-md">
+        {/* ===== Recovery Password Form — exclusive screen when token is present ===== */}
+        {recoveryToken && !recoverySuccess ? (
+          <Card className="shadow-2xl bg-white/[0.97] backdrop-blur-sm border border-white/30">
+            <CardHeader className="text-center pb-2">
+              <div className="mx-auto w-16 h-16 bg-pgr-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg">
+                <Lock className="h-8 w-8 text-white" />
+              </div>
+              <CardTitle className="text-xl font-bold text-gray-900">Redefinir Senha</CardTitle>
+              <CardDescription className="text-sm text-gray-500">Defina a sua nova senha de acesso</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <form onSubmit={handleRecoverySubmit} className="space-y-4">
+                {recoveryError && (
+                  <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    {recoveryError}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Nova Senha</Label>
+                  <Input
+                    type="password"
+                    placeholder="Mínimo 6 caracteres"
+                    value={recoveryNewPass}
+                    onChange={(e) => setRecoveryNewPass(e.target.value)}
+                    className="h-11 bg-stone-100 text-gray-900 border-stone-200"
+                    autoFocus
+                    minLength={6}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Confirmar Nova Senha</Label>
+                  <Input
+                    type="password"
+                    placeholder="Repita a nova senha"
+                    value={recoveryConfirmPass}
+                    onChange={(e) => setRecoveryConfirmPass(e.target.value)}
+                    className="h-11 bg-stone-100 text-gray-900 border-stone-200"
+                    minLength={6}
+                    required
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full h-11 bg-pgr-primary text-white font-bold text-sm hover:opacity-90"
+                  disabled={recoveryLoading || !recoveryNewPass || !recoveryConfirmPass}
+                >
+                  {recoveryLoading ? (
+                    <span className="flex items-center gap-2">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      A alterar...
+                    </span>
+                  ) : 'Redefinir Senha'}
+                </Button>
+              </form>
+
+              <p className="text-[11px] text-gray-400 text-center mt-4">
+                Procuradoria-Geral da República de Angola
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+        <>
+        {/* ===== Login Card — normal login screen ===== */}
         <Card className="shadow-2xl bg-white/[0.97] backdrop-blur-sm border border-white/30">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto w-16 h-16 bg-pgr-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg">
@@ -821,65 +885,7 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
             )}
           </DialogContent>
         </Dialog>
-
-        {/* Recovery Password Form — shown when user clicks email link */}
-        {recoveryToken && !recoverySuccess && (
-          <Card className="shadow-2xl bg-white/[0.97] backdrop-blur-sm border border-white/30 mt-4">
-            <CardHeader className="text-center pb-2">
-              <div className="mx-auto w-14 h-14 bg-pgr-primary rounded-full flex items-center justify-center mb-3">
-                <Lock className="h-7 w-7 text-white" />
-              </div>
-              <CardTitle className="text-lg font-bold text-gray-900">Redefinir Senha</CardTitle>
-              <CardDescription className="text-sm text-gray-500">Defina a sua nova senha de acesso</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-2">
-              <form onSubmit={handleRecoverySubmit} className="space-y-4">
-                {recoveryError && (
-                  <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                    {recoveryError}
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700">Nova Senha</Label>
-                  <Input
-                    type="password"
-                    placeholder="Mínimo 6 caracteres"
-                    value={recoveryNewPass}
-                    onChange={(e) => setRecoveryNewPass(e.target.value)}
-                    className="h-11 bg-stone-100 text-gray-900 border-stone-200"
-                    autoFocus
-                    minLength={6}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700">Confirmar Nova Senha</Label>
-                  <Input
-                    type="password"
-                    placeholder="Repita a nova senha"
-                    value={recoveryConfirmPass}
-                    onChange={(e) => setRecoveryConfirmPass(e.target.value)}
-                    className="h-11 bg-stone-100 text-gray-900 border-stone-200"
-                    minLength={6}
-                    required
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full h-11 bg-pgr-primary text-white font-bold text-sm hover:opacity-90"
-                  disabled={recoveryLoading || !recoveryNewPass || !recoveryConfirmPass}
-                >
-                  {recoveryLoading ? (
-                    <span className="flex items-center gap-2">
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      A alterar...
-                    </span>
-                  ) : 'Redefinir Senha'}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+        </>
         )}
       </div>
     </div>
@@ -5417,20 +5423,17 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
 }
 
 // ===================== ENTRY POINT (Auth gate) =====================
-export default function HomePage() {
-  const [showLanding, setShowLanding] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+// Auto-skip landing page if URL contains password recovery hash
+// (Supabase auth recovery links use #type=recovery&access_token=xxx)
+function shouldSkipLanding(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hash = window.location.hash;
+  return !!(hash && hash.includes('type=recovery'));
+}
 
-  // Auto-skip landing page if URL contains password recovery hash
-  // (Supabase auth recovery links use #type=recovery&access_token=xxx)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash;
-      if (hash && hash.includes('type=recovery')) {
-        setShowLanding(false);
-      }
-    }
-  }, []);
+export default function HomePage() {
+  const [showLanding, setShowLanding] = useState(() => !shouldSkipLanding());
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authUser, setAuthUser] = useState<{ username: string; nome: string; role: string } | null>(null);
 
   const handleEnterLanding = () => {

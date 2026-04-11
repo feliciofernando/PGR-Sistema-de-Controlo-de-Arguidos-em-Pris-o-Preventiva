@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       .from('system_users')
       .update({
         password_hash: passwordHash,
-        ultimo_login: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
       .eq('id', systemUser.id);
 

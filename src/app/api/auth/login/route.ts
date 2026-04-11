@@ -148,24 +148,16 @@ export async function POST(request: NextRequest) {
     // Record successful login
     recordAttempt(clientIp, true);
 
-    // Update last login and increment login_count (non-critical — won't break if columns don't exist)
+    // Update last login timestamp (non-critical — won't break if columns don't exist)
     try {
-      // Fetch current login_count before incrementing
-      const { data: existingUser } = await supabase
-        .from('system_users')
-        .select('login_count')
-        .eq('id', user.id)
-        .single();
-
       await supabase
         .from('system_users')
         .update({
-          ultimo_login: new Date().toISOString(),
-          login_count: (existingUser?.login_count || 0) + 1,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
     } catch {
-      // Columns may not exist yet — ignore
+      // Column may not exist — ignore
     }
 
     // Return user info (NO token, NO cookie, NO persistence)
