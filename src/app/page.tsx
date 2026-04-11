@@ -5420,6 +5420,17 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
 export default function HomePage() {
   const [showLanding, setShowLanding] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Auto-skip landing page if URL contains password recovery hash
+  // (Supabase auth recovery links use #type=recovery&access_token=xxx)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash && hash.includes('type=recovery')) {
+        setShowLanding(false);
+      }
+    }
+  }, []);
   const [authUser, setAuthUser] = useState<{ username: string; nome: string; role: string } | null>(null);
 
   const handleEnterLanding = () => {
