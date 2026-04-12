@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
-import { createSessionToken, setSessionCookie, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from '@/lib/auth';
+import { createSessionToken, setSessionCookie } from '@/lib/auth';
 
 // In-memory rate limiting (resets on server restart — acceptable for security)
 const loginAttempts = new Map<string, { count: number; lastAttempt: number; lockedUntil: number }>();
@@ -188,15 +188,12 @@ export async function POST(request: NextRequest) {
       sessionToken, // Client can store this for API calls
     });
 
-    // Set httpOnly session cookie (both methods for Vercel compatibility)
+    // Set httpOnly session cookie using Next.js proper API
+    // NOTE: Do NOT use response.headers.set('Set-Cookie', ...) as it OVERWRITES
+    // the cookie set by response.cookies.set(), causing the cookie to be lost!
     setSessionCookie(response, sessionToken);
-    // Also explicitly set Set-Cookie header as fallback for Vercel serverless
-    const isProduction = process.env.NODE_ENV === 'production';
-    response.headers.set(
-      'Set-Cookie',
-      `${SESSION_COOKIE_NAME}=${sessionToken}; HttpOnly; ${isProduction ? 'Secure; ' : ''}SameSite=Lax; Max-Age=${SESSION_MAX_AGE}; Path=/`
-    );
 
+    console.log('[Auth] Login successful for', cleanUsername, '- cookie set, token length:', sessionToken.length);
     return response;
   } catch (error) {
     console.error('[Auth] Login error:', error);

@@ -2,12 +2,13 @@ import { SignJWT, jwtVerify } from 'jose';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Session configuration
-const sessionSecretRaw = process.env.SESSION_SECRET || 'pgr-angola-session-secret-key-change-in-production-2024';
+const SESSION_SECRET_RAW = process.env.SESSION_SECRET || 'pgr-angola-session-secret-key-change-in-production-2024';
 // Warn in production if using default secret
 if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
   console.warn('[Auth] WARNING: SESSION_SECRET is not set. Using default secret — this is insecure in production!');
 }
-const SESSION_SECRET = new TextEncoder().encode(sessionSecretRaw);
+console.log('[Auth] SESSION_SECRET configured:', !!process.env.SESSION_SECRET, '- runtime:', typeof process === 'undefined' ? 'unknown' : (process.env.NEXT_RUNTIME || 'nodejs'));
+const SESSION_SECRET = new TextEncoder().encode(SESSION_SECRET_RAW);
 
 export const SESSION_COOKIE_NAME = 'pgr_session';
 export const SESSION_MAX_AGE = 8 * 60 * 60; // 8 hours
@@ -46,7 +47,9 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       role: payload.role as string,
     };
   } catch (err) {
-    console.error('[Auth] JWT verify failed:', err instanceof Error ? err.message : err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const errCode = (err as { code?: string })?.code;
+    console.error('[Auth] JWT verify failed:', errMsg, 'code:', errCode, 'token length:', token?.length, 'secret length:', SESSION_SECRET_RAW.length);
     return null;
   }
 }
@@ -78,16 +81,30 @@ export async function getSessionFromRequest(request: NextRequest): Promise<Sessi
   // 1. Try httpOnly cookie first
   const cookieToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   if (cookieToken) {
+    console.log('[Auth] Found cookie token, length:', cookieToken.length);
     const session = await verifySessionToken(cookieToken);
-    if (session) return session;
+    if (session) {
+      console.log('[Auth] Cookie session valid for:', session.username);
+      return session;
+    }
+    console.log('[Auth] Cookie token verification failed, trying Authorization header...');
   }
 
   // 2. Fallback: try Authorization header (Bearer token)
   const authHeader = request.headers.get('authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const headerToken = authHeader.slice(7);
+    console.log('[Auth] Found Authorization header token, length:', headerToken.length);
     const session = await verifySessionToken(headerToken);
-    if (session) return session;
+    if (session) {
+      console.log('[Auth] Header session valid for:', session.username);
+      return session;
+    }
+    console.log('[Auth] Authorization header token verification also failed');
+  }
+
+  if (!cookieToken && !authHeader) {
+    console.log('[Auth] No cookie or Authorization header found in request');
   }
 
   return null;

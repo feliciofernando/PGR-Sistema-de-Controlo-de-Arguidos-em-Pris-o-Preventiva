@@ -701,6 +701,7 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: loginUsername, password: loginPassword }),
+        credentials: 'same-origin',
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -1056,21 +1057,52 @@ function AppContent({ authUser, sessionToken, onLogout }: { authUser: { username
   const { toast } = useToast();
   const logoutTriggeredRef = React.useRef(false);
 
-  // Auth-aware fetch - includes Authorization header and handles 401 gracefully
+  // Auth-aware fetch - includes Authorization header, credentials, and handles 401 gracefully
   // Uses a ref to prevent cascading logout from multiple concurrent 401s
   const authFetch = async (url: string, options?: RequestInit) => {
     const headers = authHeaders(options?.headers as Record<string, string> || undefined);
     const res = await fetch(url, {
       ...options,
       headers,
+      credentials: 'same-origin', // Ensure httpOnly cookie is always sent
     });
     if (res.status === 401) {
       // Prevent cascading logout from multiple concurrent 401 responses
       if (!logoutTriggeredRef.current) {
         logoutTriggeredRef.current = true;
-        console.error('[Auth] 401 received for', url, '- token exists:', !!getModuleAuthToken());
+        console.error('[Auth] 401 received for', url, '- token exists:', !!getModuleAuthToken(), '- cookie exists:', document.cookie.includes('pgr_session'));
+
+        // Before logging out, validate if the session is actually expired
+        // by calling /api/auth/me (runs on Node.js runtime, not Edge)
+        try {
+          const meRes = await fetch('/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${getModuleAuthToken()}` },
+            credentials: 'same-origin',
+          });
+          if (meRes.ok) {
+            // Session is still valid on Node.js side! The 401 was likely an Edge middleware issue.
+            // Reset the logout flag and retry the original request.
+            console.log('[Auth] Session still valid (verified via /api/auth/me), retrying:', url);
+            logoutTriggeredRef.current = false;
+            const retryRes = await fetch(url, {
+              ...options,
+              headers,
+              credentials: 'same-origin',
+            });
+            if (retryRes.status !== 401) {
+              return retryRes; // Retry succeeded!
+            }
+            // Retry also got 401 - fall through to logout
+            console.error('[Auth] Retry also got 401 for', url);
+          } else {
+            console.error('[Auth] /api/auth/me also returned', meRes.status, '- session is truly expired');
+          }
+        } catch (e) {
+          console.error('[Auth] Session validation check failed:', e);
+        }
+
+        // Session is truly expired - logout
         toast({ title: "Sessão expirada", description: "Por favor, faça login novamente.", variant: "destructive" });
-        // Small delay to let other concurrent 401s be absorbed
         setTimeout(() => onLogout(), 100);
       }
       return res;
@@ -2067,6 +2099,7 @@ function AppContent({ authUser, sessionToken, onLogout }: { authUser: { username
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body),
+        credentials: 'same-origin',
       });
       if (res.ok) {
         const data = await res.json();
@@ -3652,6 +3685,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
         method: 'PUT',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ ids: Array.from(selIds), updates: { status: batchStatus } }),
+        credentials: 'same-origin',
       });
       if (res.ok) {
         const data = await res.json();
@@ -3703,6 +3737,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
         method: 'POST',
         headers: authHeaders(),
         body: formData,
+        credentials: 'same-origin',
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -4595,7 +4630,7 @@ function ConsultarView({ authUser }: { authUser: { username: string; nome: strin
       if (authUser?.role === 'magistrado') {
         params.set('magistrado', authUser.nome);
       }
-      const res = await fetch(`/api/arguidos?${params}`, { headers: authHeaders() });
+      const res = await fetch(`/api/arguidos?${params}`, { headers: authHeaders(), credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
         setResults(data.data || []);
@@ -4613,7 +4648,7 @@ function ConsultarView({ authUser }: { authUser: { username: string; nome: strin
   const handleSelectArguido = async (arguido: Arguido) => {
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/arguidos/${arguido.id}`, { headers: authHeaders() });
+      const res = await fetch(`/api/arguidos/${arguido.id}`, { headers: authHeaders(), credentials: 'same-origin' });
       if (res.ok) {
         const fullArguido = await res.json();
         setSelectedArguido(fullArguido);
@@ -4795,7 +4830,7 @@ function UtilizadoresView() {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/users', { headers: authHeaders() });
+      const res = await fetch('/api/users', { headers: authHeaders(), credentials: 'same-origin' });
       if (res.ok) {
         setUsers(await res.json());
       }
@@ -4816,6 +4851,7 @@ function UtilizadoresView() {
         method: 'PATCH',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id: userId, role: newRoleVal }),
+        credentials: 'same-origin',
       });
       if (res.ok) {
         toast({ title: "Função atualizada", description: `Função alterada para ${newRoleVal}` });
@@ -4835,6 +4871,7 @@ function UtilizadoresView() {
         method: 'PATCH',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id: userId, ativo: !ativo }),
+        credentials: 'same-origin',
       });
       if (res.ok) {
         toast({ title: ativo ? "Utilizador desativado" : "Utilizador ativado" });
@@ -4857,6 +4894,7 @@ function UtilizadoresView() {
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
+        credentials: 'same-origin',
         body: JSON.stringify({ username: newUsername, password: newPassword, nome: newNome, role: newRole, email: newEmail }),
       });
       if (res.ok) {
@@ -5097,7 +5135,7 @@ function DetailView({ arguido }: { arguido: Arguido }) {
   // Load timeline data when detail view opens
   const loadTimeline = async (arguidoId: number) => {
     try {
-      const res = await fetch(`/api/arguidos/${arguidoId}/history`, { headers: authHeaders() });
+      const res = await fetch(`/api/arguidos/${arguidoId}/history`, { headers: authHeaders(), credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
         if (data.timeline) setTimeline(data.timeline);
@@ -5112,7 +5150,7 @@ function DetailView({ arguido }: { arguido: Arguido }) {
   // Load documents for this arguido
   const loadDocuments = async (arguidoId: number) => {
     try {
-      const res = await fetch(`/api/documents?arguido_id=${arguidoId}`, { headers: authHeaders() });
+      const res = await fetch(`/api/documents?arguido_id=${arguidoId}`, { headers: authHeaders(), credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
         setDocuments(data || []);
@@ -5143,7 +5181,7 @@ function DetailView({ arguido }: { arguido: Arguido }) {
       formData.append('description', uploadDescription);
       formData.append('category', uploadCategory);
       formData.append('file', uploadFile);
-      const res = await fetch('/api/documents', { method: 'POST', headers: authHeaders(), body: formData });
+      const res = await fetch('/api/documents', { method: 'POST', headers: authHeaders(), body: formData, credentials: 'same-origin' });
       if (res.ok) {
         toast({ title: "Documento anexado", description: uploadFile.name });
         setUploadDialogOpen(false);
@@ -5164,7 +5202,7 @@ function DetailView({ arguido }: { arguido: Arguido }) {
 
   const handleDeleteDocument = async (docId: number) => {
     try {
-      const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE', headers: authHeaders() });
+      const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE', headers: authHeaders(), credentials: 'same-origin' });
       if (res.ok) {
         toast({ title: "Documento eliminado" });
         loadDocuments(arguido.id);
@@ -5582,8 +5620,8 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
     const loadSysInfo = async () => {
       try {
         const [usersRes, statsRes] = await Promise.all([
-          fetch('/api/users', { headers: authHeaders() }),
-          fetch('/api/stats', { headers: authHeaders() }),
+          fetch('/api/users', { headers: authHeaders(), credentials: 'same-origin' }),
+          fetch('/api/stats', { headers: authHeaders(), credentials: 'same-origin' }),
         ]);
         const totalUsers = usersRes.ok ? (await usersRes.json()).length : 0;
         const dbStatus = statsRes.ok ? 'online' : 'erro';
@@ -5599,7 +5637,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
   const loadAuditLogs = async (page = 1) => {
     setAuditLoading(true);
     try {
-      const res = await fetch(`/api/audit?page=${page}&pageSize=10`, { headers: authHeaders() });
+      const res = await fetch(`/api/audit?page=${page}&pageSize=10`, { headers: authHeaders(), credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
         setAuditLogs(data.data);
@@ -5616,7 +5654,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
   const handleExportBackup = async () => {
     setExporting(true);
     try {
-      const res = await fetch('/api/backup', { headers: authHeaders() });
+      const res = await fetch('/api/backup', { headers: authHeaders(), credentials: 'same-origin' });
       if (!res.ok) {
         throw new Error('Erro ao exportar backup');
       }
@@ -5657,6 +5695,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(json),
+        credentials: 'same-origin',
       });
       const data = await res.json();
       if (res.ok) {
@@ -5928,7 +5967,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
               onClick={async () => {
                 try {
                   toast({ title: 'A verificar configuração de email...' });
-                  const res = await fetch('/api/notifications/email', { headers: authHeaders() });
+                  const res = await fetch('/api/notifications/email', { headers: authHeaders(), credentials: 'same-origin' });
                   const data = await res.json();
                   if (data.success && data.sent > 0) {
                     toast({ title: 'Email enviado!', description: `${data.sent} alertas processados via ${data.provider}` });
@@ -5948,7 +5987,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
               onClick={async () => {
                 try {
                   toast({ title: 'A enviar email de teste...' });
-                  const res = await fetch('/api/notifications/email', { method: 'POST', headers: authHeaders() });
+                  const res = await fetch('/api/notifications/email', { method: 'POST', headers: authHeaders(), credentials: 'same-origin' });
                   const data = await res.json();
                   if (data.success) {
                     toast({ title: 'Email de teste enviado!', description: `ID: ${data.emailId} → ${data.sentTo}` });
@@ -5994,6 +6033,7 @@ export default function HomePage() {
       console.log('[Auth] Found stored session, validating...');
       fetch('/api/auth/me', {
         headers: { 'Authorization': `Bearer ${storedToken}` },
+        credentials: 'same-origin',
       })
         .then(res => {
           if (res.ok) {
@@ -6025,14 +6065,38 @@ export default function HomePage() {
   };
 
   const handleLogin = (user: { username: string; nome: string; role: string }, token: string) => {
-    console.log('[Auth] Login successful, setting session');
-    setIsAuthenticated(true);
-    setAuthUser(user);
-    setSessionToken(token);
-    // Store in module-level variable for ALL components to use
+    console.log('[Auth] Login successful, setting session and validating...');
+    // Store token immediately so authFetch can use it
     setModuleAuthToken(token);
-    // Store user info for session persistence
     setStoredUserInfo(user);
+
+    // Validate the session works before showing the dashboard
+    fetch('/api/auth/me', {
+      headers: { 'Authorization': `Bearer ${token}` },
+      credentials: 'same-origin',
+    })
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error(`Session validation failed: ${res.status}`);
+      })
+      .then(data => {
+        if (data?.success) {
+          console.log('[Auth] Session validated successfully, showing dashboard');
+          setIsAuthenticated(true);
+          setAuthUser(user);
+          setSessionToken(token);
+        } else {
+          throw new Error('Invalid session response');
+        }
+      })
+      .catch(err => {
+        console.error('[Auth] Session validation after login failed:', err);
+        // Clear the stored token
+        clearModuleAuth();
+        // Show error on login page instead of getting kicked out of dashboard
+        // The user will need to try logging in again
+        alert('Não foi possível criar a sessão. Por favor, tente fazer login novamente.');
+      });
   };
 
   const handleLogout = () => {
@@ -6043,7 +6107,7 @@ export default function HomePage() {
     clearModuleAuth();
     setShowLanding(true);
     // Also call server logout to clear httpOnly cookie
-    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
   };
 
   // Step 1: Landing page with animated fog background
