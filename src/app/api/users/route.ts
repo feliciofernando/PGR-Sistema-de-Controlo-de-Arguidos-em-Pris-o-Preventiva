@@ -73,10 +73,9 @@ export async function POST(request: NextRequest) {
     // Sync with Supabase Auth if email provided (for password recovery)
     if (cleanEmail) {
       try {
-        const { data: authUsers } = await supabase.auth.admin.listUsers({
-          filters: { email: cleanEmail },
-        });
-        if (!authUsers?.users || authUsers.users.length === 0) {
+        const { data: authUsers } = await supabase.auth.admin.listUsers();
+        const existingAuthUser = authUsers?.users?.find(u => u.email === cleanEmail);
+        if (!existingAuthUser) {
           await supabase.auth.admin.createUser({
             email: cleanEmail,
             password,

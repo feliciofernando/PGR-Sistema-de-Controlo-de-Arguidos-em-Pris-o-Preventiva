@@ -2,9 +2,12 @@ import { SignJWT, jwtVerify } from 'jose';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Session configuration
-const SESSION_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || 'pgr-angola-session-secret-key-change-in-production-2024'
-);
+const sessionSecretRaw = process.env.SESSION_SECRET || 'pgr-angola-session-secret-key-change-in-production-2024';
+// Warn in production if using default secret
+if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
+  console.warn('[Auth] WARNING: SESSION_SECRET is not set. Using default secret — this is insecure in production!');
+}
+const SESSION_SECRET = new TextEncoder().encode(sessionSecretRaw);
 
 const SESSION_COOKIE_NAME = 'pgr_session';
 const SESSION_MAX_AGE = 8 * 60 * 60; // 8 hours
@@ -34,6 +37,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
     const { payload } = await jwtVerify(token, SESSION_SECRET, {
       issuer: 'pgr-angola',
       audience: 'pgr-angola-api',
+      clockTolerance: '60 seconds', // Allow 60s clock skew between Edge and Node.js runtimes
     });
     return {
       userId: payload.userId as number,
@@ -41,7 +45,8 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       nome: payload.nome as string,
       role: payload.role as string,
     };
-  } catch {
+  } catch (err) {
+    console.error('[Auth] JWT verify failed:', err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -91,8 +96,10 @@ export async function getSessionFromRequest(request: NextRequest): Promise<Sessi
 // Routes that don't require authentication
 const PUBLIC_ROUTES = [
   '/api/auth/login',
+  '/api/auth/me',
   '/api/auth/reset-password',
   '/api/auth/update-password',
+  '/api/auth/logout',
   '/api/arguidos/search-public',
 ];
 

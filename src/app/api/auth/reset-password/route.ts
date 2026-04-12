@@ -70,11 +70,10 @@ export async function POST(request: NextRequest) {
 
     // 2. Ensure user exists in Supabase Auth (for token generation)
     try {
-      const { data: authUsers } = await supabase.auth.admin.listUsers({
-        filters: { email: userEmail },
-      });
+      const { data: authUsers } = await supabase.auth.admin.listUsers();
+      const existingAuthUser = authUsers?.users?.find(u => u.email === userEmail);
 
-      if (!authUsers?.users || authUsers.users.length === 0) {
+      if (!existingAuthUser) {
         // Create user in Supabase Auth with random password (not used for login)
         const randomPassword = crypto.randomUUID() + crypto.randomUUID();
         await supabase.auth.admin.createUser({
@@ -96,7 +95,9 @@ export async function POST(request: NextRequest) {
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: 'recovery',
       email: userEmail,
-      redirectTo: siteUrl,
+      options: {
+        redirectTo: siteUrl,
+      },
     });
 
     if (linkError || !linkData?.properties?.action_link) {

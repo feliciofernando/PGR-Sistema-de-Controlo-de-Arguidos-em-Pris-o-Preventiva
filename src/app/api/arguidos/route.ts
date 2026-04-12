@@ -68,6 +68,14 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get('sortBy') || 'created_at';
     const sortOrder = searchParams.get('sortOrder') || 'desc';
 
+    // Whitelist allowed sort columns to prevent injection
+    const ALLOWED_SORT_COLUMNS = [
+      'created_at', 'updated_at', 'nome_arguido', 'numero_processo', 'numero_id',
+      'crime', 'status', 'data_detencao', 'fim_primeiro_prazo', 'fim_segundo_prazo',
+      'magistrado', 'data_regresso', 'data_remessa_jg',
+    ];
+    const safeSortBy = ALLOWED_SORT_COLUMNS.includes(sortBy) ? sortBy : 'created_at';
+
     let query = supabase
       .from('arguidos')
       .select('*', { count: 'exact' });
@@ -92,11 +100,17 @@ export async function GET(request: NextRequest) {
     if (prazoAte) query = query.lte('fim_primeiro_prazo', prazoAte);
 
     // Sort
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+    query = query.order(safeSortBy, { ascending: sortOrder === 'asc' });
+
+    // When prazoFilter is active, we need to fetch more records from DB
+    // because the in-memory filter reduces the set after DB pagination.
+    // Fetch a larger batch, filter in-memory, then paginate manually.
+    const needsExpandedFetch = !!prazoFilter;
+    const fetchLimit = needsExpandedFetch ? 5000 : pageSize;
 
     // Pagination
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const from = (page - 1) * fetchLimit;
+    const to = from + fetchLimit - 1;
     query = query.range(from, to);
 
     const { data: rawData, error, count } = await query;
@@ -107,7 +121,7 @@ export async function GET(request: NextRequest) {
     }
 
     let arguidos = toCamelCaseDeep(rawData || []) as Array<Record<string, unknown>>;
-    const total = count || 0;
+    const totalDb = count || 0;
 
     // Apply prazo filter in-memory
     if (prazoFilter) {
@@ -133,15 +147,19 @@ export async function GET(request: NextRequest) {
         }
       });
 
-      // After filtering, update the total count
+      // Apply manual pagination after filtering
       const filteredTotal = arguidos.length;
+      const pageFrom = (page - 1) * pageSize;
+      const pageTo = pageFrom + pageSize;
+      const paginatedArguidos = arguidos.slice(pageFrom, pageTo);
+
       return NextResponse.json({
-        data: arguidos,
+        data: paginatedArguidos,
         pagination: {
-          page: 1,
+          page,
           pageSize,
           total: filteredTotal,
-          totalPages: 1,
+          totalPages: Math.ceil(filteredTotal / pageSize),
         },
       });
     }
@@ -151,8 +169,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         pageSize,
-        total,
-        totalPages: Math.ceil(total / pageSize),
+        total: totalDb,
+        totalPages: Math.ceil(totalDb / pageSize),
       },
     });
   } catch (error) {

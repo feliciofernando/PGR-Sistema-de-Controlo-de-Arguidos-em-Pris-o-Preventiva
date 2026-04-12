@@ -248,11 +248,17 @@ export async function GET(request: NextRequest) {
     if (statusFilter) filteredQuery = filteredQuery.eq('status', statusFilter);
     const { data: filteredArguidos } = await filteredQuery;
 
+    // Count encerrados directly instead of subtraction (avoids negative values)
+    const [encerradosRes] = await Promise.all([
+      (() => { const q = supabase.from('arguidos').select('*', { count: 'exact', head: true }); return applyFilters(q).eq('status', 'encerrado'); })(),
+    ]);
+    const encerrados = encerradosRes.count || 0;
+
     return NextResponse.json({
       totalArguidos,
       ativos,
       vencidos,
-      encerrados: totalArguidos - ativos - vencidos,
+      encerrados,
       totalAlertas,
       alertasPendentes,
       prazosProximos,

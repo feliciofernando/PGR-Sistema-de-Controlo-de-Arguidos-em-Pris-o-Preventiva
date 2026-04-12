@@ -190,6 +190,8 @@ const MEDIDAS_LIST = [
 // ===================== AUTH TOKEN STORAGE =====================
 // Module-level token storage so ALL components can access it for API calls
 let _moduleAuthToken: string | null = null;
+// Flag to prevent cascading logout from multiple concurrent 401s
+let _isLoggingOut = false;
 
 function setModuleAuthToken(token: string | null) {
   _moduleAuthToken = token;
@@ -209,6 +211,31 @@ function getModuleAuthToken(): string | null {
     try { _moduleAuthToken = localStorage.getItem('pgr_session_token'); } catch {}
   }
   return _moduleAuthToken;
+}
+
+function clearModuleAuth() {
+  _moduleAuthToken = null;
+  _isLoggingOut = false;
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem('pgr_session_token'); } catch {}
+    try { localStorage.removeItem('pgr_user_info'); } catch {}
+  }
+}
+
+function setStoredUserInfo(user: { username: string; nome: string; role: string }) {
+  if (typeof window !== 'undefined') {
+    try { localStorage.setItem('pgr_user_info', JSON.stringify(user)); } catch {}
+  }
+}
+
+function getStoredUserInfo(): { username: string; nome: string; role: string } | null {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('pgr_user_info');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+  }
+  return null;
 }
 
 function authHeaders(existing?: Record<string, string>): Record<string, string> {
@@ -1032,15 +1059,45 @@ function AppContent({ authUser, sessionToken, onLogout }: { authUser: { username
   const { toast } = useToast();
 
   // Auth-aware fetch - includes Authorization header and handles 401 gracefully
+  // Uses debounce to prevent cascading logout from multiple concurrent 401s
   const authFetch = async (url: string, options?: RequestInit) => {
     const headers = authHeaders(options?.headers as Record<string, string> || undefined);
     const res = await fetch(url, {
       ...options,
       headers,
+      credentials: 'same-origin', // Ensure cookies are sent with same-origin requests
     });
     if (res.status === 401) {
-      toast({ title: "Sessão expirada", description: "Por favor, faça login novamente.", variant: "destructive" });
-      onLogout();
+      // Prevent cascading logout from multiple concurrent 401 responses
+      if (!_isLoggingOut) {
+        _isLoggingOut = true;
+        // Validate session one more time before logging out
+        try {
+          const validateRes = await fetch('/api/auth/me', {
+            headers: authHeaders(),
+            credentials: 'same-origin',
+          });
+          if (validateRes.ok) {
+            // Session is still valid - this 401 might be a transient issue
+            // Re-try the original request once
+            _isLoggingOut = false;
+            const retryRes = await fetch(url, {
+              ...options,
+              headers,
+              credentials: 'same-origin',
+            });
+            if (retryRes.status !== 401) {
+              return retryRes;
+            }
+            // Retry also failed with 401, proceed to logout
+            _isLoggingOut = true;
+          }
+        } catch {
+          // Validation request itself failed - proceed to logout
+        }
+        toast({ title: "Sessão expirada", description: "Por favor, faça login novamente.", variant: "destructive" });
+        onLogout();
+      }
       return res;
     }
     return res;
@@ -1334,8 +1391,8 @@ function AppContent({ authUser, sessionToken, onLogout }: { authUser: { username
         body: JSON.stringify({
           endpoint: subscription.endpoint,
           keys: {
-            p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')!))),
-            auth: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')!))),
+            p256dh: btoa(String.fromCharCode(...Array.from(new Uint8Array(subscription.getKey('p256dh')!)))),
+            auth: btoa(String.fromCharCode(...Array.from(new Uint8Array(subscription.getKey('auth')!)))),
           },
         }),
       });
@@ -1387,8 +1444,8 @@ function AppContent({ authUser, sessionToken, onLogout }: { authUser: { username
         body: JSON.stringify({
           endpoint: subscription.endpoint,
           keys: {
-            p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')!))),
-            auth: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')!))),
+            p256dh: btoa(String.fromCharCode(...Array.from(new Uint8Array(subscription.getKey('p256dh')!)))),
+            auth: btoa(String.fromCharCode(...Array.from(new Uint8Array(subscription.getKey('auth')!)))),
           },
         }),
       });
@@ -1511,7 +1568,7 @@ function AppContent({ authUser, sessionToken, onLogout }: { authUser: { username
               criticos: d.criticos,
               atencao: d.atencao,
               normal: d.normal,
-              total: d.total,
+              total: d.totalArguidos || d.total || 0,
               hasUrgent: d.hasUrgent,
             });
           }
@@ -5952,6 +6009,50 @@ export default function HomePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authUser, setAuthUser] = useState<{ username: string; nome: string; role: string } | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [restoringSession, setRestoringSession] = useState(true); // Loading state for session restore
+
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      const storedToken = getModuleAuthToken(); // Checks _moduleAuthToken then localStorage
+      const storedUser = getStoredUserInfo();
+
+      if (storedToken && storedUser) {
+        try {
+          // Validate the stored token with the server
+          const res = await fetch('/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${storedToken}` },
+            credentials: 'same-origin',
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.user) {
+              // Token is valid - restore session
+              setModuleAuthToken(storedToken);
+              setStoredUserInfo(data.user);
+              setAuthUser(data.user);
+              setSessionToken(storedToken);
+              setIsAuthenticated(true);
+              setRestoringSession(false);
+              return;
+            }
+          }
+        } catch {
+          // Network error - try to use cached session anyway (offline tolerance)
+          setModuleAuthToken(storedToken);
+          setAuthUser(storedUser);
+          setSessionToken(storedToken);
+          setIsAuthenticated(true);
+          setRestoringSession(false);
+          return;
+        }
+        // Token invalid - clear stored data
+        clearModuleAuth();
+      }
+      setRestoringSession(false);
+    };
+    restoreSession();
+  }, []);
 
   const handleEnterLanding = () => {
     setShowLanding(false);
@@ -5963,7 +6064,31 @@ export default function HomePage() {
     setSessionToken(token);
     // Store in module-level variable for ALL components to use
     setModuleAuthToken(token);
+    // Store user info for session persistence
+    setStoredUserInfo(user);
+    // Reset logout flag
+    _isLoggingOut = false;
   };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setAuthUser(null);
+    setSessionToken(null);
+    clearModuleAuth();
+    setShowLanding(true);
+  };
+
+  // Show loading while restoring session
+  if (restoringSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-gray-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-pgr-primary border-t-transparent" />
+          <p className="text-sm text-pgr-text-muted">A restaurar sessão...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Step 1: Landing page with animated fog background
   if (showLanding) {
@@ -5976,5 +6101,5 @@ export default function HomePage() {
   }
 
   // Step 3: Main application
-  return <AppContent authUser={authUser} sessionToken={sessionToken} onLogout={() => { setIsAuthenticated(false); setAuthUser(null); setSessionToken(null); setModuleAuthToken(null); setShowLanding(true); }} />;
+  return <AppContent authUser={authUser} sessionToken={sessionToken} onLogout={handleLogout} />;
 }

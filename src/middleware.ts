@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/lib/auth';
 
 export async function middleware(request: NextRequest) {
@@ -7,7 +7,7 @@ export async function middleware(request: NextRequest) {
   if (authResult) return authResult;
 
   // Continue to route handler
-  return null;
+  return NextResponse.next();
 }
 
 export const config = {

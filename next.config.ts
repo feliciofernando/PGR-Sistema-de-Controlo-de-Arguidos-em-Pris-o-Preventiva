@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["jspdf", "jspdf-autotable"],
   // Turbopack config (Next.js 16 default bundler)
   turbopack: {},
+  // Allowed dev origins for preview environments
+  allowedDevOrigins: [
+    '.space.z.ai',
+    '.z.ai',
+  ],
   async headers() {
     return [
       // Service Worker headers

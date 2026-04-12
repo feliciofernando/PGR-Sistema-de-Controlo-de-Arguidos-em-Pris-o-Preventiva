@@ -45,7 +45,10 @@ export async function POST(request: NextRequest) {
     const totalArguidos = totalRes.count || 0;
     const ativos = ativosRes.count || 0;
     const vencidos = vencidosRes.count || 0;
-    const encerrados = totalArguidos - ativos - vencidos;
+
+    // Count encerrados directly (avoids negative values from subtraction)
+    const encerradosRes = await applyFilters(supabase.from('arguidos').select('*', { count: 'exact', head: true })).eq('status', 'encerrado');
+    const encerrados = encerradosRes.count || 0;
 
     // 2. Active with deadlines for prazos stats
     let ativosQuery = supabase

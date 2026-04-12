@@ -20,11 +20,6 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "PGR Angola",
-  },
 };
 
 export const metadata: Metadata = {

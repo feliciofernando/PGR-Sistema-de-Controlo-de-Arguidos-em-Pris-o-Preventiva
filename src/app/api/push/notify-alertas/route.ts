@@ -171,14 +171,14 @@ export async function GET() {
     // 5. Return the full categorized summary for in-app notification
     return NextResponse.json({
       sent,
-      total: totalSubs,
+      totalSubscriptions: totalSubs,
       hasUrgent,
       hasAnyAlert,
       expirados,
       criticos,
       atencao,
       normal,
-      total,
+      totalArguidos: total,
       pushTitle,
       pushBody,
       expiradosList,
