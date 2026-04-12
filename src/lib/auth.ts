@@ -9,8 +9,8 @@ if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
 }
 const SESSION_SECRET = new TextEncoder().encode(sessionSecretRaw);
 
-const SESSION_COOKIE_NAME = 'pgr_session';
-const SESSION_MAX_AGE = 8 * 60 * 60; // 8 hours
+export const SESSION_COOKIE_NAME = 'pgr_session';
+export const SESSION_MAX_AGE = 8 * 60 * 60; // 8 hours
 
 export interface SessionPayload {
   userId: number;
@@ -126,6 +126,11 @@ export async function authMiddleware(request: NextRequest): Promise<NextResponse
   const session = await getSessionFromRequest(request);
 
   if (!session) {
+    // Debug: log why auth failed
+    const hasCookie = !!request.cookies.get(SESSION_COOKIE_NAME)?.value;
+    const authHeader = request.headers.get('authorization');
+    const hasAuthHeader = !!authHeader;
+    console.error(`[Auth] 401 for ${pathname} - cookie: ${hasCookie}, authHeader: ${hasAuthHeader}, tokenPrefix: ${authHeader?.slice(0, 20) || 'none'}`);
     return NextResponse.json(
       { error: 'Sessão expirada. Por favor, faça login novamente.', code: 'UNAUTHORIZED' },
       { status: 401 }
