@@ -68,11 +68,24 @@ export function clearSessionCookie(response: NextResponse): void {
   });
 }
 
-// Get session from request cookies
+// Get session from request cookies OR Authorization header
 export async function getSessionFromRequest(request: NextRequest): Promise<SessionPayload | null> {
-  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifySessionToken(token);
+  // 1. Try httpOnly cookie first
+  const cookieToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (cookieToken) {
+    const session = await verifySessionToken(cookieToken);
+    if (session) return session;
+  }
+
+  // 2. Fallback: try Authorization header (Bearer token)
+  const authHeader = request.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const headerToken = authHeader.slice(7);
+    const session = await verifySessionToken(headerToken);
+    if (session) return session;
+  }
+
+  return null;
 }
 
 // Routes that don't require authentication

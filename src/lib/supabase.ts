@@ -80,10 +80,17 @@ export function toCamelCaseDeep(obj: unknown): unknown {
   return obj;
 }
 
-// Add 3 months to a date (for 1st prazo calculation)
+// Add months to a date (for prazo calculations), handling month-end edge cases
 export function addMonthsToISO(dateStr: string | null, months: number): string | null {
   if (!dateStr) return null;
   const d = new Date(dateStr);
+  const originalDay = d.getDate();
+  // Set month first
   d.setMonth(d.getMonth() + months);
+  // If the day rolled over (e.g., Jan 31 + 1 month = Mar 3 instead of Feb 28),
+  // go back to the last day of the target month
+  if (d.getDate() !== originalDay) {
+    d.setDate(0); // Last day of previous month (which is the target month)
+  }
   return d.toISOString();
 }

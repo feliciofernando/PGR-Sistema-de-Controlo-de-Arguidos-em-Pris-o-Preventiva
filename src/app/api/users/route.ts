@@ -106,6 +106,37 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'User id is required' }, { status: 400 });
     }
 
+    // Prevent admin from self-demotion or self-deactivation
+    const currentUserId = request.headers.get('x-user-id');
+    const currentUserRole = request.headers.get('x-user-role');
+    if (currentUserId && String(id) === currentUserId) {
+      if (role && role !== 'admin') {
+        return NextResponse.json({ error: 'Não pode alterar o seu próprio cargo. Contacte outro administrador.' }, { status: 403 });
+      }
+      if (ativo === false) {
+        return NextResponse.json({ error: 'Não pode desativar a sua própria conta. Contacte outro administrador.' }, { status: 403 });
+      }
+    }
+
+    // Prevent demoting the last admin
+    if (role && role !== 'admin' && currentUserRole === 'admin') {
+      const { data: targetUser } = await supabase
+        .from('system_users')
+        .select('role')
+        .eq('id', id)
+        .single();
+      if (targetUser?.role === 'admin') {
+        const { count } = await supabase
+          .from('system_users')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'admin')
+          .eq('ativo', true);
+        if (count && count <= 1) {
+          return NextResponse.json({ error: 'Não pode remover o último administrador ativo.' }, { status: 403 });
+        }
+      }
+    }
+
     const updates: Record<string, unknown> = {};
 
     if (role) {

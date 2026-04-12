@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase, toCamelCaseDeep } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
 
+// Escape special wildcard characters in ILIKE patterns to prevent injection
+function escapeIlike(str: string): string {
+  return str.replace(/[%_\\]/g, '\\$&');
+}
+
 // GET /api/arguidos/export-xlsx - Export arguidos as XLSX
 export async function GET(request: NextRequest) {
   try {
@@ -20,7 +25,7 @@ export async function GET(request: NextRequest) {
       .limit(5000);
 
     if (search) {
-      query = query.or(`nome_arguido.ilike.%${search}%,numero_processo.ilike.%${search}%,numero_id.ilike.%${search}%`);
+      query = query.or(`nome_arguido.ilike.%${escapeIlike(search)}%,numero_processo.ilike.%${escapeIlike(search)}%,numero_id.ilike.%${escapeIlike(search)}%`);
     }
     if (status) query = query.eq('status', status);
     if (crime) query = query.eq('crime', crime);

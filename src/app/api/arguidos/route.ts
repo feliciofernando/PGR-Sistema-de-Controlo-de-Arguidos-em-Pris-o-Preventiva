@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, toCamelCaseDeep, toSnakeCaseDeep, addMonthsToISO } from '@/lib/supabase';
 
+// Escape special wildcard characters in ILIKE patterns to prevent injection
+function escapeIlike(str: string): string {
+  return str.replace(/[%_\\]/g, '\\$&');
+}
+
 // Helper: create audit log entry
 async function createAuditLog(params: {
   arguidoId: number;
@@ -69,7 +74,7 @@ export async function GET(request: NextRequest) {
 
     // Search across multiple fields
     if (search) {
-      query = query.or(`nome_arguido.ilike.%${search}%,numero_processo.ilike.%${search}%,numero_id.ilike.%${search}%,nome_pai.ilike.%${search}%,nome_mae.ilike.%${search}%`);
+      query = query.or(`nome_arguido.ilike.%${escapeIlike(search)}%,numero_processo.ilike.%${escapeIlike(search)}%,numero_id.ilike.%${escapeIlike(search)}%,nome_pai.ilike.%${escapeIlike(search)}%,nome_mae.ilike.%${escapeIlike(search)}%`);
     }
     if (status) {
       query = query.eq('status', status);
@@ -126,6 +131,18 @@ export async function GET(request: NextRequest) {
           case 'normal': return daysRemaining > 7;
           default: return true;
         }
+      });
+
+      // After filtering, update the total count
+      const filteredTotal = arguidos.length;
+      return NextResponse.json({
+        data: arguidos,
+        pagination: {
+          page: 1,
+          pageSize,
+          total: filteredTotal,
+          totalPages: 1,
+        },
       });
     }
 
@@ -201,7 +218,7 @@ export async function POST(request: NextRequest) {
       arguidoId: data.id,
       action: 'criacao',
       newValue: `Arguido "${body.nomeArguido}" criado (${numeroId})`,
-      username: body.username || 'sistema',
+      username: request.headers.get('x-user-username') || body.username || 'sistema',
     });
 
     return NextResponse.json(toCamelCaseDeep(data), { status: 201 });

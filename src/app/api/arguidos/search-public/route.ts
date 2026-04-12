@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, toCamelCaseDeep } from '@/lib/supabase';
 
+// Escape special wildcard characters in ILIKE patterns to prevent injection
+function escapeIlike(str: string): string {
+  return str.replace(/[%_\\]/g, '\\$&');
+}
+
 /**
  * GET /api/arguidos/search-public
  * Public endpoint for searching defendant processes from the landing page.
@@ -24,7 +29,7 @@ export async function GET(request: NextRequest) {
         'id, numero_id, numero_processo, nome_arguido, data_detencao, crime, medidas_aplicadas, data_medidas_aplicadas, fim_primeiro_prazo, fim_segundo_prazo, status, magistrado'
       )
       .or(
-        `nome_arguido.ilike.%${cleanQuery}%,numero_processo.ilike.%${cleanQuery}%,numero_id.ilike.%${cleanQuery}%`
+        `nome_arguido.ilike.%${escapeIlike(cleanQuery)}%,numero_processo.ilike.%${escapeIlike(cleanQuery)}%,numero_id.ilike.%${escapeIlike(cleanQuery)}%`
       )
       .order('created_at', { ascending: false })
       .limit(10);

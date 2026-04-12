@@ -187,6 +187,39 @@ const MEDIDAS_LIST = [
   "Obrigação de Permanência", "Suspensão de Funções",
 ];
 
+// ===================== AUTH TOKEN STORAGE =====================
+// Module-level token storage so ALL components can access it for API calls
+let _moduleAuthToken: string | null = null;
+
+function setModuleAuthToken(token: string | null) {
+  _moduleAuthToken = token;
+  if (typeof window !== 'undefined') {
+    if (token) {
+      try { localStorage.setItem('pgr_session_token', token); } catch {}
+    } else {
+      try { localStorage.removeItem('pgr_session_token'); } catch {}
+    }
+  }
+}
+
+function getModuleAuthToken(): string | null {
+  if (_moduleAuthToken) return _moduleAuthToken;
+  // Fallback to localStorage on page refresh
+  if (typeof window !== 'undefined') {
+    try { _moduleAuthToken = localStorage.getItem('pgr_session_token'); } catch {}
+  }
+  return _moduleAuthToken;
+}
+
+function authHeaders(existing?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...existing };
+  const token = getModuleAuthToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 // ===================== HELPERS =====================
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "—";
@@ -600,7 +633,7 @@ function InfoPill({ icon, label, value, badge, badgeColor }: {
 }
 
 // ===================== LOGIN PAGE =====================
-function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: string; role: string }) => void }) {
+function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: string; role: string }, sessionToken: string) => void }) {
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -647,7 +680,7 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string; nome: stri
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        onLogin(data.user);
+        onLogin(data.user, data.sessionToken);
       } else {
         setLoginError(data.error || 'Credenciais inválidas');
       }
@@ -995,12 +1028,16 @@ function ThemeToggle() {
   );
 }
 
-function AppContent({ authUser, onLogout }: { authUser: { username: string; nome: string; role: string } | null; onLogout: () => void }) {
+function AppContent({ authUser, sessionToken, onLogout }: { authUser: { username: string; nome: string; role: string } | null; sessionToken: string | null; onLogout: () => void }) {
   const { toast } = useToast();
 
-  // Auth-aware fetch - redirects to login on 401
+  // Auth-aware fetch - includes Authorization header and handles 401 gracefully
   const authFetch = async (url: string, options?: RequestInit) => {
-    const res = await fetch(url, options);
+    const headers = authHeaders(options?.headers as Record<string, string> || undefined);
+    const res = await fetch(url, {
+      ...options,
+      headers,
+    });
     if (res.status === 401) {
       toast({ title: "Sessão expirada", description: "Por favor, faça login novamente.", variant: "destructive" });
       onLogout();
@@ -1996,7 +2033,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       if (reportFilters.magistrado) body.magistrado = reportFilters.magistrado;
       const res = await fetch('/api/relatorios/advanced', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body),
       });
       if (res.ok) {
@@ -2483,7 +2520,6 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
   // ===================== RENDER =====================
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
     <TooltipProvider>
       <div className="min-h-screen flex flex-col">
         {/* HEADER + NAVBAR */}
@@ -2969,7 +3005,6 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         )}
       </div>
     </TooltipProvider>
-    </ThemeProvider>
   );
 }
 
@@ -3583,7 +3618,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
     try {
       const res = await fetch('/api/arguidos/batch', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ ids: Array.from(selIds), updates: { status: batchStatus } }),
       });
       if (res.ok) {
@@ -3634,6 +3669,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
       formData.append('file', csvFile);
       const res = await fetch('/api/arguidos/import', {
         method: 'POST',
+        headers: authHeaders(),
         body: formData,
       });
       const data = await res.json();
@@ -4527,7 +4563,7 @@ function ConsultarView({ authUser }: { authUser: { username: string; nome: strin
       if (authUser?.role === 'magistrado') {
         params.set('magistrado', authUser.nome);
       }
-      const res = await fetch(`/api/arguidos?${params}`);
+      const res = await fetch(`/api/arguidos?${params}`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         setResults(data.data || []);
@@ -4545,7 +4581,7 @@ function ConsultarView({ authUser }: { authUser: { username: string; nome: strin
   const handleSelectArguido = async (arguido: Arguido) => {
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/arguidos/${arguido.id}`);
+      const res = await fetch(`/api/arguidos/${arguido.id}`, { headers: authHeaders() });
       if (res.ok) {
         const fullArguido = await res.json();
         setSelectedArguido(fullArguido);
@@ -4727,7 +4763,7 @@ function UtilizadoresView() {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch('/api/users', { headers: authHeaders() });
       if (res.ok) {
         setUsers(await res.json());
       }
@@ -4746,7 +4782,7 @@ function UtilizadoresView() {
     try {
       const res = await fetch('/api/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id: userId, role: newRoleVal }),
       });
       if (res.ok) {
@@ -4765,7 +4801,7 @@ function UtilizadoresView() {
     try {
       const res = await fetch('/api/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id: userId, ativo: !ativo }),
       });
       if (res.ok) {
@@ -4788,7 +4824,7 @@ function UtilizadoresView() {
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ username: newUsername, password: newPassword, nome: newNome, role: newRole, email: newEmail }),
       });
       if (res.ok) {
@@ -5029,7 +5065,7 @@ function DetailView({ arguido }: { arguido: Arguido }) {
   // Load timeline data when detail view opens
   const loadTimeline = async (arguidoId: number) => {
     try {
-      const res = await fetch(`/api/arguidos/${arguidoId}/history`);
+      const res = await fetch(`/api/arguidos/${arguidoId}/history`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         if (data.timeline) setTimeline(data.timeline);
@@ -5044,7 +5080,7 @@ function DetailView({ arguido }: { arguido: Arguido }) {
   // Load documents for this arguido
   const loadDocuments = async (arguidoId: number) => {
     try {
-      const res = await fetch(`/api/documents?arguido_id=${arguidoId}`);
+      const res = await fetch(`/api/documents?arguido_id=${arguidoId}`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         setDocuments(data || []);
@@ -5075,7 +5111,7 @@ function DetailView({ arguido }: { arguido: Arguido }) {
       formData.append('description', uploadDescription);
       formData.append('category', uploadCategory);
       formData.append('file', uploadFile);
-      const res = await fetch('/api/documents', { method: 'POST', body: formData });
+      const res = await fetch('/api/documents', { method: 'POST', headers: authHeaders(), body: formData });
       if (res.ok) {
         toast({ title: "Documento anexado", description: uploadFile.name });
         setUploadDialogOpen(false);
@@ -5096,7 +5132,7 @@ function DetailView({ arguido }: { arguido: Arguido }) {
 
   const handleDeleteDocument = async (docId: number) => {
     try {
-      const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE', headers: authHeaders() });
       if (res.ok) {
         toast({ title: "Documento eliminado" });
         loadDocuments(arguido.id);
@@ -5514,8 +5550,8 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
     const loadSysInfo = async () => {
       try {
         const [usersRes, statsRes] = await Promise.all([
-          fetch('/api/users'),
-          fetch('/api/stats'),
+          fetch('/api/users', { headers: authHeaders() }),
+          fetch('/api/stats', { headers: authHeaders() }),
         ]);
         const totalUsers = usersRes.ok ? (await usersRes.json()).length : 0;
         const dbStatus = statsRes.ok ? 'online' : 'erro';
@@ -5531,7 +5567,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
   const loadAuditLogs = async (page = 1) => {
     setAuditLoading(true);
     try {
-      const res = await fetch(`/api/audit?page=${page}&pageSize=10`);
+      const res = await fetch(`/api/audit?page=${page}&pageSize=10`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         setAuditLogs(data.data);
@@ -5548,7 +5584,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
   const handleExportBackup = async () => {
     setExporting(true);
     try {
-      const res = await fetch('/api/backup');
+      const res = await fetch('/api/backup', { headers: authHeaders() });
       if (!res.ok) {
         throw new Error('Erro ao exportar backup');
       }
@@ -5587,7 +5623,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
       const json = JSON.parse(text);
       const res = await fetch('/api/backup/restore', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(json),
       });
       const data = await res.json();
@@ -5860,7 +5896,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
               onClick={async () => {
                 try {
                   toast({ title: 'A verificar configuração de email...' });
-                  const res = await fetch('/api/notifications/email');
+                  const res = await fetch('/api/notifications/email', { headers: authHeaders() });
                   const data = await res.json();
                   if (data.success && data.sent > 0) {
                     toast({ title: 'Email enviado!', description: `${data.sent} alertas processados via ${data.provider}` });
@@ -5880,7 +5916,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
               onClick={async () => {
                 try {
                   toast({ title: 'A enviar email de teste...' });
-                  const res = await fetch('/api/notifications/email', { method: 'POST' });
+                  const res = await fetch('/api/notifications/email', { method: 'POST', headers: authHeaders() });
                   const data = await res.json();
                   if (data.success) {
                     toast({ title: 'Email de teste enviado!', description: `ID: ${data.emailId} → ${data.sentTo}` });
@@ -5915,14 +5951,18 @@ export default function HomePage() {
   const [showLanding, setShowLanding] = useState(() => !shouldSkipLanding());
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authUser, setAuthUser] = useState<{ username: string; nome: string; role: string } | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   const handleEnterLanding = () => {
     setShowLanding(false);
   };
 
-  const handleLogin = (user: { username: string; nome: string; role: string }) => {
+  const handleLogin = (user: { username: string; nome: string; role: string }, token: string) => {
     setIsAuthenticated(true);
     setAuthUser(user);
+    setSessionToken(token);
+    // Store in module-level variable for ALL components to use
+    setModuleAuthToken(token);
   };
 
   // Step 1: Landing page with animated fog background
@@ -5936,5 +5976,5 @@ export default function HomePage() {
   }
 
   // Step 3: Main application
-  return <AppContent authUser={authUser} onLogout={() => { setIsAuthenticated(false); setAuthUser(null); setShowLanding(true); }} />;
+  return <AppContent authUser={authUser} sessionToken={sessionToken} onLogout={() => { setIsAuthenticated(false); setAuthUser(null); setSessionToken(null); setModuleAuthToken(null); setShowLanding(true); }} />;
 }

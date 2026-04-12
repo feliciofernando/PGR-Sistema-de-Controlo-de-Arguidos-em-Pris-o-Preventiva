@@ -189,7 +189,7 @@ export async function PUT(
           fieldChanged: fieldLabel(field),
           oldValue: oldStr,
           newValue: newStr,
-          username: body.username || 'sistema',
+          username: request.headers.get('x-user-username') || body.username || 'sistema',
         });
       }
     }
@@ -202,7 +202,7 @@ export async function PUT(
         fieldChanged: 'Fim 1º Prazo (calculado)',
         oldValue: formatAuditValue(existing.fim_primeiro_prazo),
         newValue: formatAuditValue(fimPrimeiroPrazo),
-        username: body.username || 'sistema',
+        username: request.headers.get('x-user-username') || body.username || 'sistema',
       });
     }
     if (formatAuditValue(existing.fim_segundo_prazo) !== formatAuditValue(fimSegundoPrazo)) {
@@ -212,7 +212,7 @@ export async function PUT(
         fieldChanged: 'Fim 2º Prazo (calculado)',
         oldValue: formatAuditValue(existing.fim_segundo_prazo),
         newValue: formatAuditValue(fimSegundoPrazo),
-        username: body.username || 'sistema',
+        username: request.headers.get('x-user-username') || body.username || 'sistema',
       });
     }
 
@@ -254,7 +254,7 @@ export async function DELETE(
         arguidoId: existing.id,
         action: 'remocao',
         newValue: `Arguido "${existing.nome_arguido}" (${existing.numero_id}) removido do sistema`,
-        username: 'sistema',
+        username: request.headers.get('x-user-username') || 'sistema',
       });
     }
 
