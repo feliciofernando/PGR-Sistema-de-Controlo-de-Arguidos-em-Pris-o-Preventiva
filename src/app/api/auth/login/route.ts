@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
+import { createSessionToken, setSessionCookie } from '@/lib/auth';
 
 // In-memory rate limiting (resets on server restart — acceptable for security)
 const loginAttempts = new Map<string, { count: number; lastAttempt: number; lockedUntil: number }>();
@@ -66,7 +67,7 @@ function recordAttempt(ip: string, success: boolean): void {
   }
 }
 
-// POST /api/auth/login — Validate credentials (no session/token persistence)
+// POST /api/auth/login — Validate credentials and create session
 export async function POST(request: NextRequest) {
   try {
     const clientIp = getClientIp(request);
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find user in system_users table (basic columns that always exist)
+    // Find user in system_users table
     const { data: user, error } = await supabase
       .from('system_users')
       .select('id, username, nome, role, password_hash, ativo')
@@ -167,9 +168,16 @@ export async function POST(request: NextRequest) {
       // Non-critical — ignore
     }
 
-    // Return user info (NO token, NO cookie, NO persistence)
-    // Login state is held in React memory only — lost on page refresh
-    return NextResponse.json({
+    // Create JWT session token
+    const sessionToken = await createSessionToken({
+      userId: user.id,
+      username: user.username,
+      nome: user.nome,
+      role: user.role,
+    });
+
+    // Return user info with session token
+    const response = NextResponse.json({
       success: true,
       user: {
         id: user.id,
@@ -177,7 +185,13 @@ export async function POST(request: NextRequest) {
         nome: user.nome,
         role: user.role,
       },
+      sessionToken, // Client can store this for API calls
     });
+
+    // Set httpOnly session cookie
+    setSessionCookie(response, sessionToken);
+
+    return response;
   } catch (error) {
     console.error('[Auth] Login error:', error);
     return NextResponse.json(

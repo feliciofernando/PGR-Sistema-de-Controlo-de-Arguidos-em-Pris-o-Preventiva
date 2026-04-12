@@ -30,3 +30,31 @@ Stage Summary:
 - Connected to Supabase database with 9 existing arguido records
 - All API endpoints functional (stats, arguidos, alertas, auth, documents, etc.)
 - PGR Angola - Sistema de Controlo de Arguidos em Prisão Preventiva is live
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Add Excel (XLSX) export capability alongside existing CSV export
+
+Work Log:
+- Read existing CSV export route at `/api/arguidos/export-csv/route.ts` to understand the data model, query filters, column headers, and date formatting
+- Installed `xlsx` package (v0.18.5) via `bun add xlsx`
+- Created new API route at `/src/app/api/arguidos/export-xlsx/route.ts`:
+  - Same query params as CSV: search, status, crime, magistrado, startDate, endDate
+  - Same Supabase query with filters and 5000 row limit
+  - Same column headers in Portuguese (22 columns)
+  - Same date formatting with `toLocaleDateString('pt-AO')`
+  - Uses `XLSX.utils.aoa_to_sheet` and `XLSX.write` for server-side XLSX generation
+  - Auto-sized columns based on header and content length
+  - Returns proper Content-Type: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  - Timestamped filename: `arguidos_pgr_YYYYMMDD_HHmm.xlsx`
+- Added `handleExportXlsx` handler in `AppContent` (same pattern as `handleExportCsv`)
+- Added `onExportXlsx` prop to `GestaoView` component signature and type definition
+- Added "Exportar XLSX" button in the Gestão toolbar (with `FileDown` icon) next to the existing CSV button
+- Passed `onExportXlsx` prop from `AppContent` to `GestaoView` with export permission check
+- Lint check passes cleanly
+
+Stage Summary:
+- XLSX export fully functional alongside existing CSV export
+- Users can export filtered arguido data as Excel spreadsheets from the Gestão view
+- API route supports all existing filter parameters

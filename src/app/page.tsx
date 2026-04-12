@@ -29,6 +29,7 @@ import {
   Trash2,
   Eye,
   ChevronLeft,
+  ChevronRight,
   AlertTriangle,
   AlertCircle,
   CheckCircle2,
@@ -63,6 +64,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend,
 } from "recharts";
 import { ThemeProvider, useTheme } from "next-themes";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // ===================== TYPES =====================
 interface Arguido {
@@ -190,6 +192,81 @@ function formatDate(dateStr: string | null): string {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
   return d.toLocaleDateString("pt-AO", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+// ===================== REAL-TIME COUNTDOWN HOOK =====================
+function useCountdown(targetDate: string | null): { days: number; hours: number; minutes: number; seconds: number; isExpired: boolean } {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!targetDate) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [targetDate]);
+
+  if (!targetDate) return { days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: false };
+
+  const target = new Date(targetDate).getTime();
+  const diff = target - now;
+  const isExpired = diff <= 0;
+
+  if (isExpired) {
+    const absDiff = Math.abs(diff);
+    return {
+      days: Math.floor(absDiff / (1000 * 60 * 60 * 24)),
+      hours: Math.floor((absDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+      minutes: Math.floor((absDiff % (1000 * 60 * 60)) / (1000 * 60)),
+      seconds: Math.floor((absDiff % (1000 * 60)) / 1000),
+      isExpired: true,
+    };
+  }
+
+  return {
+    days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+    hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+    minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+    seconds: Math.floor((diff % (1000 * 60)) / 1000),
+    isExpired: false,
+  };
+}
+
+// ===================== COUNTDOWN DISPLAY COMPONENT =====================
+function CountdownDisplay({ targetDate, compact }: { targetDate: string | null; compact?: boolean }) {
+  const { days, hours, minutes, seconds, isExpired } = useCountdown(targetDate);
+
+  if (!targetDate) return <span className="text-muted-foreground text-xs">Sem prazo</span>;
+
+  if (compact) {
+    if (isExpired) return <span className="text-red-500 dark:text-red-400 font-bold text-xs">+{days}d {hours}h</span>;
+    if (days <= 0) return <span className="text-red-500 dark:text-red-400 font-bold text-xs">{hours}h {minutes}m {seconds}s</span>;
+    if (days <= 3) return <span className="text-amber-600 dark:text-amber-400 font-bold text-xs">{days}d {hours}h {minutes}m</span>;
+    return <span className="text-green-600 dark:text-green-400 font-bold text-xs">{days}d {hours}h</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs font-mono">
+      {isExpired && <span className="text-red-500 dark:text-red-400">+</span>}
+      <div className="flex items-center gap-0.5">
+        <span className={`font-bold ${isExpired ? 'text-red-500 dark:text-red-400' : days <= 3 ? 'text-amber-600 dark:text-amber-400' : days <= 7 ? 'text-amber-500 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}>{String(days).padStart(2, '0')}</span>
+        <span className="text-muted-foreground">d</span>
+      </div>
+      <span className="text-muted-foreground">:</span>
+      <div className="flex items-center gap-0.5">
+        <span className="font-bold text-foreground">{String(hours).padStart(2, '0')}</span>
+        <span className="text-muted-foreground">h</span>
+      </div>
+      <span className="text-muted-foreground">:</span>
+      <div className="flex items-center gap-0.5">
+        <span className="font-bold text-foreground">{String(minutes).padStart(2, '0')}</span>
+        <span className="text-muted-foreground">m</span>
+      </div>
+      <span className="text-muted-foreground">:</span>
+      <div className="flex items-center gap-0.5">
+        <span className="font-bold text-foreground animate-pulse">{String(seconds).padStart(2, '0')}</span>
+        <span className="text-muted-foreground">s</span>
+      </div>
+    </div>
+  );
 }
 
 function getDaysRemaining(dateStr: string | null): number | null {
@@ -906,6 +983,7 @@ function ThemeToggle() {
           size="icon"
           className="h-10 w-10 rounded-full text-pgr-text-muted hover:bg-stone-100 hover:text-stone-900 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
         >
           {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </Button>
@@ -919,6 +997,17 @@ function ThemeToggle() {
 
 function AppContent({ authUser, onLogout }: { authUser: { username: string; nome: string; role: string } | null; onLogout: () => void }) {
   const { toast } = useToast();
+
+  // Auth-aware fetch - redirects to login on 401
+  const authFetch = async (url: string, options?: RequestInit) => {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+      toast({ title: "Sessão expirada", description: "Por favor, faça login novamente.", variant: "destructive" });
+      onLogout();
+      return res;
+    }
+    return res;
+  };
 
   const [activeView, setActiveView] = useState("dashboard");
 
@@ -965,7 +1054,8 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
   const [prazoDe, setPrazoDe] = useState("");
   const [prazoAte, setPrazoAte] = useState("");
   const [totalRecords, setTotalRecords] = useState(0);
-  const pageSize = 500;
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
 
   // Document state
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -993,8 +1083,8 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         ? `/api/alertas?limit=100&magistrado=${encodeURIComponent(authUser.nome)}`
         : '/api/alertas?limit=100';
       const [statsRes, alertasRes] = await Promise.all([
-        fetch(`/api/stats${magistradoParam}`),
-        fetch(alertasUrl),
+        authFetch(`/api/stats${magistradoParam}`),
+        authFetch(alertasUrl),
       ]);
       if (statsRes.ok) {
         setStats(await statsRes.json());
@@ -1021,7 +1111,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         crime: filterCrime,
         status: filterStatus,
         prazoFilter: filterPrazo,
-        page: '1',
+        page: currentPage.toString(),
         pageSize: pageSize.toString(),
       });
       if (authUser?.role === 'magistrado') {
@@ -1031,7 +1121,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       if (detencaoAte) params.set('detencaoAte', detencaoAte);
       if (prazoDe) params.set('prazoDe', prazoDe);
       if (prazoAte) params.set('prazoAte', prazoAte);
-      const res = await fetch(`/api/arguidos?${params}`);
+      const res = await authFetch(`/api/arguidos?${params}`);
       if (res.ok) {
         const data = await res.json();
         setArguidos(data.data);
@@ -1044,7 +1134,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
   const loadStats = async (extraParams?: string) => {
     try {
       const magistradoParam = authUser?.role === 'magistrado' ? `?magistrado=${encodeURIComponent(authUser.nome)}` : '';
-      const res = await fetch(`/api/stats${magistradoParam}${extraParams || ''}`);
+      const res = await authFetch(`/api/stats${magistradoParam}${extraParams || ''}`);
       if (res.ok) setStats(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -1054,7 +1144,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       const magistradoParam = authUser?.role === 'magistrado'
         ? `?limit=100&magistrado=${encodeURIComponent(authUser.nome)}`
         : '?limit=100';
-      const res = await fetch(`/api/alertas${magistradoParam}`);
+      const res = await authFetch(`/api/alertas${magistradoParam}`);
       if (res.ok) setAlertas(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -1100,6 +1190,34 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
   useEffect(() => {
     if (activeView === "gestao") loadArguidos();
   }, [activeView, searchTerm, filterCrime, filterStatus, filterPrazo, detencaoDe, detencaoAte, prazoDe, prazoAte]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterCrime, filterStatus, filterPrazo, detencaoDe, detencaoAte, prazoDe, prazoAte]);
+
+  // Reload when page changes (skip page 1 — handled by filter effect)
+  useEffect(() => {
+    if (activeView === "gestao" && currentPage > 1) loadArguidos();
+  }, [currentPage]);
+
+  // Auto-refresh data every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadStats();
+      if (activeView === "gestao") loadArguidos();
+      if (activeView === "alertas") loadAlertas();
+    }, 5 * 60 * 1000); // 5 minutes
+    return () => clearInterval(interval);
+  }, [activeView]);
+
+  // Auto-dismiss in-app notification after 15 seconds (non-blocking)
+  useEffect(() => {
+    if (inAppNotification) {
+      const timer = setTimeout(() => setInAppNotification(null), 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [inAppNotification]);
 
   // Register Service Worker
   const registerServiceWorker = async (): Promise<boolean> => {
@@ -1173,7 +1291,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       });
 
       // Send subscription to server
-      const res = await fetch('/api/push/subscribe', {
+      const res = await authFetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1226,7 +1344,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       });
 
       // Send subscription to server
-      const res = await fetch('/api/push/subscribe', {
+      const res = await authFetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1256,7 +1374,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
         await subscription.unsubscribe();
-        await fetch(`/api/push/subscribe?endpoint=${encodeURIComponent(subscription.endpoint)}`, { method: 'DELETE' });
+        await authFetch(`/api/push/subscribe?endpoint=${encodeURIComponent(subscription.endpoint)}`, { method: 'DELETE' });
       }
       setPushSubscribed(false);
       toast({ title: 'Notificações desativadas' });
@@ -1271,7 +1389,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       toast({ title: "A verificar alertas do sistema..." });
 
       // Fetch real summary from server
-      const notifyRes = await fetch("/api/push/notify-alertas");
+      const notifyRes = await authFetch("/api/push/notify-alertas");
       if (notifyRes.ok) {
         const d = await notifyRes.json();
 
@@ -1325,7 +1443,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
       // 1. Run deadline check (updates DB with any new alerts)
       try {
-        const checkRes = await fetch("/api/alertas", {
+        const checkRes = await authFetch("/api/alertas", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "check" }),
@@ -1344,7 +1462,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
       // 3. Get categorized summary + show in-app overlay (ALWAYS, regardless of push success)
       try {
-        const notifyRes = await fetch("/api/push/notify-alertas");
+        const notifyRes = await authFetch("/api/push/notify-alertas");
         if (notifyRes.ok) {
           const d = await notifyRes.json();
           console.log('[Auto-Notify] Summary:', d.expirados, 'expirados,', d.criticos, 'criticos,', d.atencao, 'atencao,', d.normal, 'normal | Push sent:', d.sent);
@@ -1368,7 +1486,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
       // 5. Fallback: use stats API if push API failed
       try {
-        const statsData = await fetch('/api/stats').then(r => r.json());
+        const statsData = await authFetch('/api/stats').then(r => r.json());
         if (statsData && (statsData.prazosCriticos > 0 || statsData.prazosProximos > 0)) {
           setInAppNotification({
             expirados: statsData.vencidos || 0,
@@ -1466,7 +1584,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
   // Check deadlines
   const checkDeadlines = async () => {
     try {
-      const res = await fetch("/api/alertas", {
+      const res = await authFetch("/api/alertas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "check" }),
@@ -1482,7 +1600,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
   const handleDeleteAlertas = async (ids: number[]) => {
     try {
-      const res = await fetch("/api/alertas", {
+      const res = await authFetch("/api/alertas", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
@@ -1574,7 +1692,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     setDuplicateWarning(null);
 
     try {
-      const res = await fetch(`/api/arguidos?search=${encodeURIComponent(formData.nomeArguido.trim())}&pageSize=10`);
+      const res = await authFetch(`/api/arguidos?search=${encodeURIComponent(formData.nomeArguido.trim())}&pageSize=10`);
       if (res.ok) {
         const data = await res.json();
         if (data.data && data.data.length > 0) {
@@ -1630,7 +1748,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       const editId = formMode === "edit" ? (editingId || viewDetail?.id) : undefined;
       const finalUrl = formMode === "create" ? "/api/arguidos" : `/api/arguidos/${editId}`;
 
-      const res = await fetch(finalUrl, {
+      const res = await authFetch(finalUrl, {
         method: formMode === "create" ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -1661,7 +1779,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`/api/arguidos/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/arguidos/${id}`, { method: "DELETE" });
       if (res.ok) {
         toast({ title: "Arguido removido." });
         setDeleteDialog(null);
@@ -1676,12 +1794,12 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
   const fetchAndShowDetail = async (id: number) => {
     setViewDetailLoading(true);
     try {
-      const res = await fetch(`/api/arguidos/${id}`);
+      const res = await authFetch(`/api/arguidos/${id}`);
       if (res.ok) {
         const fullArguido = await res.json();
         setViewDetail(fullArguido);
         // Load documents for this arguido
-        const docsRes = await fetch(`/api/documents?arguido_id=${id}`);
+        const docsRes = await authFetch(`/api/documents?arguido_id=${id}`);
         if (docsRes.ok) setDocuments(await docsRes.json());
       } else {
         toast({ title: "Erro", description: "Falha ao carregar detalhes.", variant: "destructive" });
@@ -1703,10 +1821,10 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
       fd.append('file', file);
       fd.append('description', description);
       fd.append('category', category);
-      const res = await fetch('/api/documents', { method: 'POST', body: fd });
+      const res = await authFetch('/api/documents', { method: 'POST', body: fd });
       if (res.ok) {
         toast({ title: "Documento enviado!", description: file.name });
-        const docsRes = await fetch(`/api/documents?arguido_id=${arguidoId}`);
+        const docsRes = await authFetch(`/api/documents?arguido_id=${arguidoId}`);
         if (docsRes.ok) setDocuments(await docsRes.json());
       } else {
         const err = await res.json();
@@ -1723,16 +1841,84 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
   // Delete document handler
   const handleDeleteDocument = async (docId: number) => {
     try {
-      const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/documents?id=${docId}`, { method: 'DELETE' });
       if (res.ok) {
         toast({ title: "Documento eliminado." });
         setDeleteDocDialog(null);
         if (viewDetail) {
-          const docsRes = await fetch(`/api/documents?arguido_id=${viewDetail.id}`);
+          const docsRes = await authFetch(`/api/documents?arguido_id=${viewDetail.id}`);
           if (docsRes.ok) setDocuments(await docsRes.json());
         }
       }
     } catch (e) { console.error(e); }
+  };
+
+  // CSV export handler
+  const handleExportCsv = async () => {
+    try {
+      const params = new URLSearchParams({
+        search: searchTerm,
+        status: filterStatus,
+        crime: filterCrime,
+      });
+      if (detencaoDe) params.set('startDate', detencaoDe);
+      if (detencaoAte) params.set('endDate', detencaoAte);
+
+      const res = await authFetch(`/api/arguidos/export-csv?${params}`);
+      if (!res.ok) throw new Error('Erro ao exportar CSV');
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get('Content-Disposition');
+      let filename = 'arguidos_pgr.csv';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match) filename = match[1];
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: 'CSV exportado!', description: `Ficheiro: ${filename}` });
+    } catch {
+      toast({ title: 'Erro', description: 'Falha ao exportar CSV.', variant: 'destructive' });
+    }
+  };
+
+  // XLSX export handler
+  const handleExportXlsx = async () => {
+    try {
+      const params = new URLSearchParams({
+        search: searchTerm,
+        status: filterStatus,
+        crime: filterCrime,
+      });
+      if (detencaoDe) params.set('startDate', detencaoDe);
+      if (detencaoAte) params.set('endDate', detencaoAte);
+
+      const res = await authFetch(`/api/arguidos/export-xlsx?${params}`);
+      if (!res.ok) throw new Error('Erro ao exportar XLSX');
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get('Content-Disposition');
+      let filename = 'arguidos_pgr.xlsx';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match) filename = match[1];
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: 'XLSX exportado!', description: `Ficheiro: ${filename}` });
+    } catch {
+      toast({ title: 'Erro', description: 'Falha ao exportar XLSX.', variant: 'destructive' });
+    }
   };
 
   // Report export PDF handler
@@ -2301,8 +2487,8 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
     <TooltipProvider>
       <div className="min-h-screen flex flex-col">
         {/* HEADER + NAVBAR */}
-        <header className="sticky top-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-stone-200/80 dark:border-gray-800 shadow-sm">
-          <nav className="flex items-center">
+        <header className="sticky top-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-stone-200/80 dark:border-gray-800 shadow-sm" role="banner">
+          <nav className="flex items-center" role="navigation" aria-label="Navegação principal">
             {/* Desktop Nav */}
             <div className="hidden md:flex items-center justify-center gap-2 flex-1 px-4 py-2">
               {navItems.map((item) => {
@@ -2312,6 +2498,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   <button
                     key={item.id}
                     onClick={() => setActiveView(item.id)}
+                    aria-current={isActive ? "page" : undefined}
                     className={`relative flex items-center gap-2.5 px-5 py-2.5 text-[15px] font-semibold rounded-lg transition-all duration-200
                       ${isActive
                         ? "bg-stone-900 text-white shadow-md dark:bg-orange-600 dark:hover:bg-orange-700"
@@ -2344,6 +2531,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                     size="icon"
                     className={`relative h-10 w-10 rounded-full transition-colors ${pushSubscribed ? 'text-green-600 hover:bg-green-500/10' : 'text-pgr-text-muted hover:bg-stone-100 dark:hover:bg-gray-800 hover:text-stone-900 dark:hover:text-gray-200'}`}
                     onClick={pushSubscribed ? handleUnsubscribePush : handleSubscribePush}
+                    aria-label="Notificações push"
                   >
                     <Bell className="h-5 w-5" />
                     {pushSubscribed && (
@@ -2372,6 +2560,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                       size="icon"
                       className="h-10 w-10 rounded-full text-pgr-text-muted hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-colors"
                       onClick={onLogout}
+                      aria-label="Sair do sistema"
                     >
                       <LogOut className="h-5 w-5" />
                     </Button>
@@ -2417,6 +2606,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 <button
                   className={`relative h-10 w-10 flex items-center justify-center rounded-full transition-colors ${pushSubscribed ? 'text-green-600 bg-green-500/10' : 'text-pgr-text-muted bg-stone-50 dark:bg-gray-800'}`}
                   onClick={pushSubscribed ? handleUnsubscribePush : handleSubscribePush}
+                  aria-label="Notificações push"
                 >
                   <Bell className="h-5 w-5" />
                   {pushSubscribed && (
@@ -2428,6 +2618,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                     <button
                       className="relative h-10 w-10 flex items-center justify-center rounded-full text-pgr-text-muted bg-stone-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-colors"
                       onClick={onLogout}
+                      aria-label="Sair do sistema"
                     >
                       <LogOut className="h-5 w-5" />
                     </button>
@@ -2442,7 +2633,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
         </header>
 
         {/* MAIN CONTENT */}
-        <main className="flex-1 overflow-auto dark:bg-gray-950">
+        <main className="flex-1 overflow-auto dark:bg-gray-950" role="main">
             <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
               {/* ============ DASHBOARD VIEW ============ */}
               {activeView === "dashboard" && (
@@ -2469,7 +2660,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                     }
                     (async () => {
                       try {
-                        const res = await fetch("/api/arguidos", {
+                        const res = await authFetch("/api/arguidos", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify(formData),
@@ -2510,12 +2701,17 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                   prazoAte={prazoAte}
                   setPrazoAte={setPrazoAte}
                   totalRecords={totalRecords}
+                  currentPage={currentPage}
+                  onPageChange={setCurrentPage}
+                  pageSize={pageSize}
                   onEdit={canPerform(authUser?.role || '', 'edit') ? handleOpenEdit : () => {}}
                   onDelete={canPerform(authUser?.role || '', 'delete') ? (id) => setDeleteDialog(id) : () => {}}
                   onView={(a) => fetchAndShowDetail(a.id)}
                   onPdf={handleDownloadPdf}
                   onRefresh={loadArguidos}
                   onExport={canPerform(authUser?.role || '', 'export') ? handleExportPDF : () => {}}
+                  onExportCsv={canPerform(authUser?.role || '', 'export') ? handleExportCsv : () => {}}
+                  onExportXlsx={canPerform(authUser?.role || '', 'export') ? handleExportXlsx : () => {}}
                   onExportSelected={canPerform(authUser?.role || '', 'export') ? handleExportSelectedPDF : () => {}}
                   onNew={canPerform(authUser?.role || '', 'create') ? handleOpenCreate : () => {}}
                   canCreate={canPerform(authUser?.role || '', 'create')}
@@ -2561,7 +2757,7 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
           </main>
 
         {/* FOOTER */}
-        <footer className="bg-stone-200 dark:bg-gray-900 text-pgr-text-muted dark:text-gray-400 border-t border-stone-200 dark:border-gray-800 py-3 px-4 text-center text-xs mt-auto">
+        <footer className="bg-stone-200 dark:bg-gray-900 text-pgr-text-muted dark:text-gray-400 border-t border-stone-200 dark:border-gray-800 py-3 px-4 text-center text-xs mt-auto" role="contentinfo">
           <div className="flex items-center justify-center gap-2">
             <Gavel className="h-3 w-3" />
             <span>© {new Date().getFullYear()} Procuradoria-Geral da República de Angola — Sistema de Controlo de Arguidos em Prisão Preventiva</span>
@@ -2672,33 +2868,32 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* ============ IN-APP NOTIFICATION OVERLAY (iOS fallback) ============ */}
+        {/* ============ IN-APP NOTIFICATION (non-blocking, auto-dismiss, top-right) ============ */}
         {inAppNotification && (
-          <div className="fixed inset-0 z-[100] flex items-start justify-center pt-4 px-4 pointer-events-none">
-            {/* Backdrop */}
-            <div
-              className="absolute inset-0 bg-black/40 dark:bg-black/60 pointer-events-auto"
-              onClick={() => setInAppNotification(null)}
-            />
-            {/* Notification Card */}
-            <div
-              className="relative pointer-events-auto w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden bg-white dark:bg-gray-900 border border-stone-200 dark:border-gray-700"
-              style={{ animation: 'slideInAppNotification 0.4s ease-out' }}
-            >
-              {/* Header — PGR Angola branding */}
-              <div className="bg-stone-800 dark:bg-stone-900 px-5 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center backdrop-blur-sm">
-                    <Scale className="h-5 w-5 text-white" />
+          <div className="fixed top-4 right-4 z-[100] w-full max-w-sm pointer-events-auto" style={{ animation: 'slideInRight 0.4s ease-out' }} role="alert" aria-live="assertive" aria-atomic="true">
+            <div className="rounded-2xl shadow-2xl overflow-hidden bg-white dark:bg-gray-900 border border-stone-200 dark:border-gray-700">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-stone-800 to-stone-900 dark:from-gray-900 dark:to-gray-800 px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 bg-white/15 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                    <Scale className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-white tracking-wide">PGR ANGOLA</h3>
-                    <p className="text-[11px] text-white/60">Resumo de Alertas do Sistema</p>
+                    <h3 className="text-sm font-bold text-white">PGR ANGOLA</h3>
+                    <p className="text-[10px] text-white/60">Resumo de Alertas · Auto-fechar em 15s</p>
                   </div>
                 </div>
+                <button onClick={() => setInAppNotification(null)} className="text-white/60 hover:text-white transition-colors" aria-label="Fechar notificação">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
               </div>
 
-              {/* Urgency indicator bar */}
+              {/* Auto-dismiss progress bar */}
+              <div className="h-1 bg-stone-100 dark:bg-gray-800 overflow-hidden">
+                <div className="h-full bg-pgr-primary animate-[shrink_15s_linear_forwards]" style={{ animation: 'shrink 15s linear forwards', transformOrigin: 'left' }} />
+              </div>
+
+              {/* Urgency indicator */}
               {inAppNotification.hasUrgent && (
                 <div className="h-1 bg-red-500 relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-red-300 to-transparent" style={{ animation: 'shimmer 1.5s ease-in-out infinite' }} />
@@ -2708,106 +2903,64 @@ function AppContent({ authUser, onLogout }: { authUser: { username: string; nome
                 <div className="h-1 bg-stone-300 dark:bg-gray-700" />
               )}
 
-              {/* Summary Rows */}
-              <div className="px-5 py-4 space-y-2.5">
-                {/* Expirados */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-red-500/10 dark:bg-red-900/30 border border-red-500/20 dark:border-red-800/40">
-                  <div className="w-9 h-9 rounded-lg bg-red-500/20 dark:bg-red-900/50 flex items-center justify-center flex-shrink-0">
-                    <AlertCircle className="h-4.5 w-4.5 text-red-500 dark:text-red-400" />
+              {/* Content */}
+              <div className="px-4 py-3 space-y-2">
+                {inAppNotification.expirados > 0 && (
+                  <div className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-red-500/10 dark:bg-red-900/30 border border-red-500/20 dark:border-red-800/40">
+                    <AlertCircle className="h-4 w-4 text-red-500 dark:text-red-400 flex-shrink-0" />
+                    <span className="text-sm font-semibold text-red-600 dark:text-red-400 flex-1">{inAppNotification.expirados} Prazo(s) Expirado(s)</span>
+                    <span className="text-lg font-bold text-red-500 dark:text-red-400">{inAppNotification.expirados}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">
-                      {inAppNotification.expirados} Prazo(s) Expirado(s)
-                    </p>
-                    <p className="text-[11px] text-red-500 dark:text-red-400/80">Expirados</p>
+                )}
+                {inAppNotification.criticos > 0 && (
+                  <div className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/40">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                    <span className="text-sm font-semibold text-amber-700 dark:text-amber-300 flex-1">{inAppNotification.criticos} Crítico(s)</span>
+                    <span className="text-lg font-bold text-amber-600 dark:text-amber-400">{inAppNotification.criticos}</span>
                   </div>
-                  <span className="text-xl font-bold text-red-500 dark:text-red-400">{inAppNotification.expirados}</span>
-                </div>
-
-                {/* Críticos */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/40">
-                  <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
-                    <AlertTriangle className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
+                )}
+                {inAppNotification.atencao > 0 && (
+                  <div className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30">
+                    <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                    <span className="text-sm font-semibold text-amber-600 dark:text-amber-300 flex-1">{inAppNotification.atencao} Atenção</span>
+                    <span className="text-lg font-bold text-amber-600 dark:text-amber-400">{inAppNotification.atencao}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                      {inAppNotification.criticos} Caso(s) Crítico(s)
-                    </p>
-                    <p className="text-[11px] text-amber-500 dark:text-amber-400/80">Prazo muito próximo</p>
+                )}
+                {inAppNotification.normal > 0 && (
+                  <div className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                    <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex-1">{inAppNotification.normal} Normal</span>
+                    <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{inAppNotification.normal}</span>
                   </div>
-                  <span className="text-xl font-bold text-amber-600 dark:text-amber-400">{inAppNotification.criticos}</span>
-                </div>
-
-                {/* Atenção */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30">
-                  <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-                    <Clock className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-300">
-                      {inAppNotification.atencao} Caso(s) em estado de Atenção
-                    </p>
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400/80">Prazo próximo</p>
-                  </div>
-                  <span className="text-xl font-bold text-amber-600 dark:text-amber-400">{inAppNotification.atencao}</span>
-                </div>
-
-                {/* Normal */}
-                <div className="flex items-center gap-3.5 py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center flex-shrink-0">
-                    <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                      {inAppNotification.normal} Caso(s) em estado Normal
-                    </p>
-                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400/80">Dentro do prazo</p>
-                  </div>
-                  <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{inAppNotification.normal}</span>
-                </div>
-
-                {/* Divider */}
-                <div className="border-t border-stone-200 dark:border-gray-700 my-1" />
-
-                {/* Total */}
-                <div className="flex items-center justify-between px-1">
-                  <p className="text-xs font-medium text-pgr-text-muted dark:text-gray-400">Total de Casos</p>
-                  <p className="text-sm font-bold text-pgr-text dark:text-gray-100">{inAppNotification.total}</p>
+                )}
+                <div className="flex items-center justify-between px-1 pt-1 border-t border-stone-200 dark:border-gray-700">
+                  <p className="text-xs text-muted-foreground">Total</p>
+                  <p className="text-sm font-bold text-foreground">{inAppNotification.total}</p>
                 </div>
               </div>
 
-              {/* Footer Actions */}
-              <div className="px-5 pb-4 flex items-center gap-2">
+              {/* Actions */}
+              <div className="px-4 pb-3 flex gap-2">
                 <Button
                   size="sm"
-                  className={`flex-1 text-white text-sm font-semibold ${
-                    inAppNotification.hasUrgent
-                      ? 'bg-red-600 hover:bg-red-700'
-                      : 'bg-stone-800 hover:bg-stone-700 dark:bg-orange-700 dark:hover:bg-orange-600'
+                  className={`flex-1 text-white text-xs font-semibold ${
+                    inAppNotification.hasUrgent ? 'bg-red-600 hover:bg-red-700' : 'bg-stone-800 hover:bg-stone-700 dark:bg-orange-700 dark:hover:bg-orange-600'
                   }`}
-                  onClick={() => {
-                    setInAppNotification(null);
-                    setActiveView("alertas");
-                  }}
+                  onClick={() => { setInAppNotification(null); setActiveView("alertas"); }}
                 >
                   Ver Alertas
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-sm dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-                  onClick={() => setInAppNotification(null)}
-                >
+                <Button size="sm" variant="outline" className="text-xs dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800" onClick={() => setInAppNotification(null)}>
                   Fechar
                 </Button>
               </div>
 
               {/* Pulsing dot for urgent */}
               {inAppNotification.hasUrgent && (
-                <div className="absolute top-4 right-4">
-                  <span className="relative flex h-3 w-3">
+                <div className="absolute top-3 right-12">
+                  <span className="relative flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
                   </span>
                 </div>
               )}
@@ -3010,12 +3163,33 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
   onViewDetail: (id: number) => void;
   authUser: { username: string; nome: string; role: string } | null;
 }) {
+  const [dashSearch, setDashSearch] = useState('');
+  const [dashCrime, setDashCrime] = useState('');
+  const [dashStatus, setDashStatus] = useState('');
+  const [dashPrazo, setDashPrazo] = useState('');
+
   if (!stats) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto text-pgr-text-muted mb-2" />
-          <p className="text-sm text-muted-foreground">A carregar dados...</p>
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => (
+            <Card key={i} className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+              <CardContent className="p-4">
+                <Skeleton className="h-4 w-24 mb-2" />
+                <Skeleton className="h-8 w-16" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1,2].map(i => (
+            <Card key={i} className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+              <CardContent className="p-4">
+                <Skeleton className="h-4 w-32 mb-4" />
+                <Skeleton className="h-[200px] w-full" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     );
@@ -3077,13 +3251,51 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
         </div>
       </div>
 
+      {/* Dashboard Filters */}
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+        <CardContent className="p-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-pgr-text-muted" />
+              <Input placeholder="Pesquisar no painel..." value={dashSearch} onChange={e => setDashSearch(e.target.value)} className="pl-9 h-9 bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700 text-sm" />
+            </div>
+            <Select value={dashCrime || "todos"} onValueChange={v => setDashCrime(v === "todos" ? "" : v)}>
+              <SelectTrigger className="w-36 h-9 text-xs bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700"><SelectValue placeholder="Crime" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos Crimes</SelectItem>
+                {CRIMES_LIST.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={dashStatus || "todos"} onValueChange={v => setDashStatus(v === "todos" ? "" : v)}>
+              <SelectTrigger className="w-32 h-9 text-xs bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="ativo">Ativo</SelectItem>
+                <SelectItem value="vencido">Vencido</SelectItem>
+                <SelectItem value="encerrado">Encerrado</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={dashPrazo || "todos"} onValueChange={v => setDashPrazo(v === "todos" ? "" : v)}>
+              <SelectTrigger className="w-36 h-9 text-xs bg-stone-100 dark:bg-gray-800 text-pgr-text dark:text-gray-100 border-stone-200 dark:border-gray-700"><SelectValue placeholder="Prazo" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos Prazos</SelectItem>
+                <SelectItem value="vencido">Vencido</SelectItem>
+                <SelectItem value="critico">Crítico</SelectItem>
+                <SelectItem value="atencao">Atenção</SelectItem>
+                <SelectItem value="normal">Normal</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-stone-200">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-pgr-text-muted font-medium">Total Arguidos</p>
+                <p className="text-sm text-pgr-text-muted dark:text-gray-400 font-medium">Total Arguidos</p>
                 <p className="text-2xl font-bold text-pgr-text dark:text-gray-100">{stats.totalArguidos}</p>
               </div>
               <div className="w-10 h-10 bg-pgr-surface rounded-lg flex items-center justify-center">
@@ -3097,11 +3309,11 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-pgr-text-muted font-medium">Ativos</p>
-                <p className="text-2xl font-bold text-green-600">{stats.ativos}</p>
+                <p className="text-sm text-pgr-text-muted dark:text-gray-400 font-medium">Ativos</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.ativos}</p>
               </div>
-              <div className="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <div className="w-10 h-10 bg-green-500/10 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400" />
               </div>
             </div>
           </CardContent>
@@ -3111,11 +3323,11 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-pgr-text-muted font-medium">Vencidos</p>
-                <p className="text-2xl font-bold text-red-500">{stats.vencidos}</p>
+                <p className="text-sm text-pgr-text-muted dark:text-gray-400 font-medium">Vencidos</p>
+                <p className="text-2xl font-bold text-red-500 dark:text-red-400">{stats.vencidos}</p>
               </div>
-              <div className="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
-                <AlertCircle className="h-5 w-5 text-red-500" />
+              <div className="w-10 h-10 bg-red-500/10 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
+                <AlertCircle className="h-5 w-5 text-red-500 dark:text-red-400" />
               </div>
             </div>
           </CardContent>
@@ -3125,11 +3337,11 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-pgr-text-muted font-medium">Alertas</p>
-                <p className="text-2xl font-bold text-amber-600">{stats.alertasPendentes}</p>
+                <p className="text-sm text-pgr-text-muted dark:text-gray-400 font-medium">Alertas</p>
+                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stats.alertasPendentes}</p>
               </div>
-              <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
-                <Bell className="h-5 w-5 text-amber-600" />
+              <div className="w-10 h-10 bg-amber-50 dark:bg-amber-900/30 rounded-lg flex items-center justify-center">
+                <Bell className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
           </CardContent>
@@ -3224,7 +3436,7 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
           <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-80">
             <Table>
               <TableHeader className="sticky top-0 z-10">
-                <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+                <TableRow className="hover:bg-stone-700! bg-stone-700 dark:bg-gray-800 border-none">
                   <TableHead className="text-sm font-semibold text-white">Prazo</TableHead>
                   <TableHead className="text-sm font-semibold text-white">Nome / Processo</TableHead>
                   <TableHead className="text-sm font-semibold text-white hidden md:table-cell">Crime</TableHead>
@@ -3240,9 +3452,12 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
                     onClick={() => onViewDetail(p.id)}
                   >
                     <TableCell className="py-2.5">
-                      <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded whitespace-nowrap ${getDeadlineColor(p.diasRestantes)}`}>
-                        {getDeadlineLabel(p.diasRestantes)}
-                      </span>
+                      <div className="space-y-1">
+                        <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded whitespace-nowrap ${getDeadlineColor(p.diasRestantes)}`}>
+                          {getDeadlineLabel(p.diasRestantes)}
+                        </span>
+                        <CountdownDisplay targetDate={p.dataVencimento} compact />
+                      </div>
                     </TableCell>
                     <TableCell className="py-2.5">
                       <p className="text-sm font-medium leading-tight text-gray-800 dark:text-gray-100"><span className="inline-block max-w-[180px] lg:max-w-[240px] align-bottom truncate">{p.nomeArguido}</span></p>
@@ -3300,7 +3515,7 @@ function CadastroView({ formData, setFormData, onSubmit }: {
 }
 
 // ===================== GESTÃO VIEW =====================
-function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, detencaoDe, setDetencaoDe, detencaoAte, setDetencaoAte, prazoDe, setPrazoDe, prazoAte, setPrazoAte, totalRecords, onEdit, onDelete, onView, onPdf, onRefresh, onExport, onExportSelected, onNew, canCreate, canEdit, canDelete, canExport, canImport, selectedIds: parentSelectedIds, setSelectedIds: setParentSelectedIds }: {
+function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime, setFilterCrime, filterStatus, setFilterStatus, filterPrazo, setFilterPrazo, detencaoDe, setDetencaoDe, detencaoAte, setDetencaoAte, prazoDe, setPrazoDe, prazoAte, setPrazoAte, totalRecords, currentPage, onPageChange, pageSize, onEdit, onDelete, onView, onPdf, onRefresh, onExport, onExportCsv, onExportXlsx, onExportSelected, onNew, canCreate, canEdit, canDelete, canExport, canImport, selectedIds: parentSelectedIds, setSelectedIds: setParentSelectedIds }: {
   arguidos: Arguido[];
   loading: boolean;
   searchTerm: string; setSearchTerm: (v: string) => void;
@@ -3312,12 +3527,17 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
   prazoDe: string; setPrazoDe: (v: string) => void;
   prazoAte: string; setPrazoAte: (v: string) => void;
   totalRecords: number;
+  currentPage: number;
+  onPageChange: (page: number) => void;
+  pageSize: number;
   onEdit: (a: Arguido) => void;
   onDelete: (id: number) => void;
   onView: (a: Arguido) => void;
   onPdf: (a: Arguido) => void;
   onRefresh: () => void;
   onExport: () => void;
+  onExportCsv: () => void;
+  onExportXlsx: () => void;
   onExportSelected?: (ids: number[]) => void;
   onNew: () => void;
   canCreate?: boolean;
@@ -3448,6 +3668,12 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
           {canExport && (
             <Button variant="outline" size="sm" onClick={onExport}><FileText className="h-4 w-4 mr-1" /> Exportar PDF</Button>
           )}
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={onExportCsv}><Download className="h-4 w-4 mr-1" /> Exportar CSV</Button>
+          )}
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={onExportXlsx}><FileDown className="h-4 w-4 mr-1" /> Exportar XLSX</Button>
+          )}
           {canImport && (
             <Button variant="outline" size="sm" onClick={() => setCsvDialogOpen(true)}><Upload className="h-4 w-4 mr-1" /> Importar CSV</Button>
           )}
@@ -3573,8 +3799,18 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
       <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[calc(100vh-320px)] overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-6 w-6 animate-spin text-pgr-text-muted" />
+            <div className="space-y-3 p-4">
+              {[1,2,3,4,5,6].map(i => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="h-4 w-8" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              ))}
             </div>
           ) : arguidos.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
@@ -3586,7 +3822,7 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
             <>
               <Table>
                 <TableHeader className="sticky top-0 z-10">
-                  <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+                  <TableRow className="hover:bg-stone-700! bg-stone-700 dark:bg-gray-800 border-none">
                     <TableHead className="text-sm font-semibold text-white w-10"><Checkbox checked={selIds.size === arguidos.length && arguidos.length > 0} onCheckedChange={toggleSelectAll} className="border-white/40" /></TableHead>
                     <TableHead className="text-sm font-semibold text-white">ID</TableHead>
                     <TableHead className="text-sm font-semibold text-white">Nº Processo</TableHead>
@@ -3612,9 +3848,12 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                         <TableCell className="text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell"><p className="max-w-[150px] truncate">{a.crime}</p></TableCell>
                         <TableCell className="text-sm text-gray-600 dark:text-gray-300 hidden lg:table-cell"><p className="max-w-[140px] truncate">{a.magistrado}</p></TableCell>
                         <TableCell>
-                          <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded ${getDeadlineColor(nearestDays)}`}>
-                            {getDeadlineLabel(nearestDays)}
-                          </span>
+                          <div className="space-y-1">
+                            <span className={`inline-block text-sm font-bold px-2 py-0.5 rounded ${getDeadlineColor(nearestDays)}`}>
+                              {getDeadlineLabel(nearestDays)}
+                            </span>
+                            <CountdownDisplay targetDate={nearestDays !== null ? (days1 !== null && days2 !== null ? (days1 <= days2 ? a.fimPrimeiroPrazo : a.fimSegundoPrazo) : (days1 !== null ? a.fimPrimeiroPrazo : a.fimSegundoPrazo)) : null} compact />
+                          </div>
                         </TableCell>
                         <TableCell>
                           <span className={`text-sm font-bold px-3 py-1 rounded-lg ${
@@ -3627,15 +3866,15 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onView(a); }}><Eye className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Ver</TooltipContent></Tooltip>
+                            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Ver detalhes" onClick={(e) => { e.stopPropagation(); onView(a); }}><Eye className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Ver</TooltipContent></Tooltip>
                             {canEdit && (
-                              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onEdit(a); }}><Edit className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Editar</TooltipContent></Tooltip>
+                              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Editar" onClick={(e) => { e.stopPropagation(); onEdit(a); }}><Edit className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Editar</TooltipContent></Tooltip>
                             )}
                             {canExport && (
-                              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="sm" className="h-7 gap-1 text-[#D35400] hover:text-[#BA4A00] hover:bg-[#D35400]/10 text-sm font-semibold px-2" onClick={(e) => { e.stopPropagation(); onPdf(a); }}><FileDown className="h-3.5 w-3.5" />PDF</Button></TooltipTrigger><TooltipContent>Descarregar Ficha PDF</TooltipContent></Tooltip>
+                              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="sm" className="h-7 gap-1 text-[#D35400] hover:text-[#BA4A00] hover:bg-[#D35400]/10 text-sm font-semibold px-2" aria-label="Descarregar PDF" onClick={(e) => { e.stopPropagation(); onPdf(a); }}><FileDown className="h-3.5 w-3.5" />PDF</Button></TooltipTrigger><TooltipContent>Descarregar Ficha PDF</TooltipContent></Tooltip>
                             )}
                             {canDelete && (
-                              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={(e) => { e.stopPropagation(); onDelete(a.id); }}><Trash2 className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Eliminar</TooltipContent></Tooltip>
+                              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" aria-label="Eliminar" onClick={(e) => { e.stopPropagation(); onDelete(a.id); }}><Trash2 className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Eliminar</TooltipContent></Tooltip>
                             )}
                           </div>
                         </TableCell>
@@ -3644,11 +3883,24 @@ function GestaoView({ arguidos, loading, searchTerm, setSearchTerm, filterCrime,
                   })}
                 </TableBody>
               </Table>
-              {/* Footer with total count */}
-              <div className="flex items-center justify-center px-4 py-3 border-t border-stone-200 dark:border-gray-700">
-                <p className="text-sm text-pgr-text-muted">
+              {/* Pagination Footer */}
+              <div className="flex items-center justify-between px-4 py-3 border-t border-stone-200 dark:border-gray-700">
+                <p className="text-sm text-muted-foreground">
                   {totalRecords} registo{totalRecords !== 1 ? "s" : ""}
                 </p>
+                {totalRecords > pageSize && (
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => onPageChange(currentPage - 1)}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      Pág. {currentPage} de {Math.ceil(totalRecords / pageSize)}
+                    </span>
+                    <Button variant="outline" size="sm" disabled={currentPage >= Math.ceil(totalRecords / pageSize)} onClick={() => onPageChange(currentPage + 1)}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -3776,16 +4028,16 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView, onDe
               <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">Atenção</p>
             </CardContent>
           </Card>
-          <Card className="bg-red-800/15 border border-red-800/30">
+          <Card className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800">
             <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-red-500">{stats.vencidos}</p>
-              <p className="text-sm text-red-500 font-medium">Vencidos</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{stats.vencidos}</p>
+              <p className="text-sm text-red-600 dark:text-red-400 font-medium">Vencidos</p>
             </CardContent>
           </Card>
-          <Card className="bg-green-500/15 border border-green-500/30">
+          <Card className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800">
             <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-green-600">{stats.ativos - stats.prazosProximos}</p>
-              <p className="text-sm text-green-600 font-medium">Normal</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.ativos - stats.prazosProximos}</p>
+              <p className="text-sm text-green-600 dark:text-green-400 font-medium">Normal</p>
             </CardContent>
           </Card>
         </div>
@@ -3793,7 +4045,7 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView, onDe
 
       {/* Bulk Action Bar — shown when alerts are selected */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-2.5 bg-stone-800 rounded-lg shadow-md animate-[fadeIn_0.2s_ease-out]">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-stone-800 dark:bg-gray-800 border border-stone-700 dark:border-gray-700 rounded-lg shadow-md animate-[fadeIn_0.2s_ease-out]">
           <span className="text-sm text-white font-medium">{selectedIds.size} selecionado{selectedIds.size > 1 ? 's' : ''}</span>
           <Button
             size="sm"
@@ -3832,7 +4084,7 @@ function AlertasView({ alertas, stats, onCheck, onTestNotification, onView, onDe
             <div className="[&>[data-slot=table-container]]:max-h-[500px]">
               <Table>
                 <TableHeader className="sticky top-0 z-10">
-                  <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+                  <TableRow className="hover:bg-stone-700! bg-stone-700 dark:bg-gray-800 border-none">
                   <TableHead className="w-[40px] text-center">
                     <Checkbox
                       checked={allSelected}
@@ -4221,7 +4473,7 @@ function RelatoriosView({ stats, reportFilters, setReportFilters, onApplyFilters
         <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[400px]">
           <Table>
             <TableHeader className="sticky top-0 z-10">
-              <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+              <TableRow className="hover:bg-stone-700! bg-stone-700 dark:bg-gray-800 border-none">
                 <TableHead className="text-sm text-white">Crime</TableHead>
                 <TableHead className="text-sm text-white text-right">Total</TableHead>
                 <TableHead className="text-sm text-white text-right">% do Total</TableHead>
@@ -4355,7 +4607,7 @@ function ConsultarView({ authUser }: { authUser: { username: string; nome: strin
           <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[300px]">
             <Table>
               <TableHeader className="sticky top-0 z-10">
-                <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+                <TableRow className="hover:bg-stone-700! bg-stone-700 dark:bg-gray-800 border-none">
                   <TableHead className="text-sm font-semibold text-white">ID</TableHead>
                   <TableHead className="text-sm font-semibold text-white">Nº Processo</TableHead>
                   <TableHead className="text-sm font-semibold text-white">Nome</TableHead>
@@ -4584,8 +4836,17 @@ function UtilizadoresView() {
       <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardContent className="p-0 [&>[data-slot=table-container]]:max-h-[calc(100vh-280px)] overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-6 w-6 animate-spin text-pgr-text-muted" />
+            <div className="space-y-3 p-4">
+              {[1,2,3,4,5].map(i => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="h-4 w-8" />
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              ))}
             </div>
           ) : users.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
@@ -4595,7 +4856,7 @@ function UtilizadoresView() {
           ) : (
             <Table>
               <TableHeader className="sticky top-0 z-10">
-                <TableRow className="hover:bg-stone-700! bg-stone-700 border-none">
+                <TableRow className="hover:bg-stone-700! bg-stone-700 dark:bg-gray-800 border-none">
                   <TableHead className="text-sm font-semibold text-white">Username</TableHead>
                   <TableHead className="text-sm font-semibold text-white">Nome</TableHead>
                   <TableHead className="text-sm font-semibold text-white">Função</TableHead>
@@ -4868,10 +5129,10 @@ function DetailView({ arguido }: { arguido: Arguido }) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-stone-100 rounded-lg">
+      <div className="flex items-center justify-between p-4 bg-stone-100 dark:bg-gray-800 rounded-lg" role="banner">
         <div>
           <p className="text-sm font-bold text-pgr-text dark:text-gray-100">{arguido.numeroId}</p>
-          <p className="text-lg font-semibold">{arguido.nomeArguido}</p>
+          <p className="text-lg font-semibold text-pgr-text dark:text-gray-100">{arguido.nomeArguido}</p>
           <p className="text-xs text-muted-foreground">Processo Nº {arguido.numeroProcesso}</p>
         </div>
         <span className={`text-sm font-bold px-3 py-1 rounded-lg ${
@@ -4883,24 +5144,40 @@ function DetailView({ arguido }: { arguido: Arguido }) {
         </span>
       </div>
 
-      {/* Deadline Cards */}
+      {/* Deadline Cards — with real-time countdown */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Card className={days1 !== null && days1 <= 3 ? "border-red-300 bg-red-50/30" : ""}>
+        <Card className={`dark:bg-gray-900 ${days1 !== null && days1 <= 3 ? "border-red-300 dark:border-red-800 bg-red-50/30 dark:bg-red-900/10" : "border-stone-200 dark:border-gray-800"}`}>
           <CardContent className="p-4">
-            <p className="text-xs font-semibold text-muted-foreground mb-1">1º Prazo (3 meses)</p>
-            <p className="text-sm font-medium">{arguido.fimPrimeiroPrazo ? formatDate(arguido.fimPrimeiroPrazo) : "Não definido"}</p>
-            <span className={`inline-block text-[10px] mt-1 font-bold px-2 py-0.5 rounded ${getDeadlineColor(days1)}`}>
-              {getDeadlineLabel(days1)}
-            </span>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-muted-foreground">1º Prazo (3 meses)</p>
+              <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${getDeadlineColor(days1)}`}>
+                {getDeadlineLabel(days1)}
+              </span>
+            </div>
+            <p className="text-sm font-medium text-pgr-text dark:text-gray-100">{arguido.fimPrimeiroPrazo ? formatDate(arguido.fimPrimeiroPrazo) : "Não definido"}</p>
+            {arguido.fimPrimeiroPrazo && (
+              <div className="mt-2 p-2 bg-stone-50 dark:bg-gray-800 rounded-lg">
+                <p className="text-[10px] text-muted-foreground mb-1">Contagem regressiva</p>
+                <CountdownDisplay targetDate={arguido.fimPrimeiroPrazo} />
+              </div>
+            )}
           </CardContent>
         </Card>
-        <Card className={days2 !== null && days2 <= 3 ? "border-red-300 bg-red-50/30" : ""}>
+        <Card className={`dark:bg-gray-900 ${days2 !== null && days2 <= 3 ? "border-red-300 dark:border-red-800 bg-red-50/30 dark:bg-red-900/10" : "border-stone-200 dark:border-gray-800"}`}>
           <CardContent className="p-4">
-            <p className="text-xs font-semibold text-muted-foreground mb-1">2º Prazo (Prorrogação)</p>
-            <p className="text-sm font-medium">{arguido.fimSegundoPrazo ? formatDate(arguido.fimSegundoPrazo) : "Não definido"}</p>
-            <span className={`inline-block text-[10px] mt-1 font-bold px-2 py-0.5 rounded ${getDeadlineColor(days2)}`}>
-              {getDeadlineLabel(days2)}
-            </span>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-muted-foreground">2º Prazo (Prorrogação)</p>
+              <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${getDeadlineColor(days2)}`}>
+                {getDeadlineLabel(days2)}
+              </span>
+            </div>
+            <p className="text-sm font-medium text-pgr-text dark:text-gray-100">{arguido.fimSegundoPrazo ? formatDate(arguido.fimSegundoPrazo) : "Não definido"}</p>
+            {arguido.fimSegundoPrazo && (
+              <div className="mt-2 p-2 bg-stone-50 dark:bg-gray-800 rounded-lg">
+                <p className="text-[10px] text-muted-foreground mb-1">Contagem regressiva</p>
+                <CountdownDisplay targetDate={arguido.fimSegundoPrazo} />
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -4928,11 +5205,11 @@ function DetailView({ arguido }: { arguido: Arguido }) {
 
       {/* Observations */}
       {(arguido.remessaJgAlteracao || arguido.obs1 || arguido.obs2) && (
-        <Card>
+        <Card className="dark:bg-gray-900 border-stone-200 dark:border-gray-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold">Observações</CardTitle>
+            <CardTitle className="text-xs font-semibold text-pgr-text dark:text-gray-100">Observações</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="space-y-2 text-sm text-pgr-text dark:text-gray-100">
             {arguido.remessaJgAlteracao && (
               <div><p className="text-[10px] font-medium text-muted-foreground">Remessa JG / Alteração:</p><p>{arguido.remessaJgAlteracao}</p></div>
             )}
@@ -4947,9 +5224,9 @@ function DetailView({ arguido }: { arguido: Arguido }) {
       )}
 
       {/* Timeline - Linha do Tempo */}
-      <Card>
+      <Card className="dark:bg-gray-900 border-stone-200 dark:border-gray-800">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-pgr-text dark:text-gray-100">
             <Clock className="h-4 w-4 text-pgr-primary" />
             Linha do Tempo
           </CardTitle>
@@ -5044,11 +5321,11 @@ function DetailView({ arguido }: { arguido: Arguido }) {
       </Card>
 
       {/* Documentos Anexados */}
-      <Card>
+      <Card className="dark:bg-gray-900 border-stone-200 dark:border-gray-800">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2 text-pgr-text dark:text-gray-100">
                 <Paperclip className="h-4 w-4 text-pgr-primary" />
                 Documentos Anexados
               </CardTitle>
@@ -5074,9 +5351,9 @@ function DetailView({ arguido }: { arguido: Arguido }) {
           ) : (
             <div className="max-h-64 overflow-y-auto space-y-2">
               {documents.map((doc) => (
-                <div key={doc.id} className="flex items-start justify-between gap-3 p-3 bg-stone-50 rounded-lg border border-stone-200">
+                <div key={doc.id} className="flex items-start justify-between gap-3 p-3 bg-stone-50 dark:bg-gray-800 rounded-lg border border-stone-200 dark:border-gray-700">
                   <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <div className="mt-0.5 h-8 w-8 rounded bg-stone-200 flex items-center justify-center shrink-0">
+                    <div className="mt-0.5 h-8 w-8 rounded bg-stone-200 dark:bg-gray-700 flex items-center justify-center shrink-0">
                       <FileText className="h-4 w-4 text-stone-500" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -5228,6 +5505,11 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
     dbStatus: string;
   } | null>(null);
 
+  const [auditLogs, setAuditLogs] = useState<Array<{ id: number; arguidoId: number | null; username: string; action: string; fieldChanged: string | null; oldValue: string | null; newValue: string | null; createdAt: string }>>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditTotal, setAuditTotal] = useState(0);
+
   useEffect(() => {
     const loadSysInfo = async () => {
       try {
@@ -5243,7 +5525,25 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
       }
     };
     loadSysInfo();
+    loadAuditLogs();
   }, []);
+
+  const loadAuditLogs = async (page = 1) => {
+    setAuditLoading(true);
+    try {
+      const res = await fetch(`/api/audit?page=${page}&pageSize=10`);
+      if (res.ok) {
+        const data = await res.json();
+        setAuditLogs(data.data);
+        setAuditTotal(data.pagination.total);
+        setAuditPage(page);
+      }
+    } catch {
+      // silent
+    } finally {
+      setAuditLoading(false);
+    }
+  };
 
   const handleExportBackup = async () => {
     setExporting(true);
@@ -5317,7 +5617,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
 
       {/* System Info */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-stone-200">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-stone-200">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -5330,7 +5630,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-teal-500">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-teal-500">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -5343,7 +5643,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-pgr-surface border border-stone-200 pgr-card-hover border-l-4 border-l-green-500">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-green-500">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -5361,7 +5661,7 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
       </div>
 
       {/* Backup Actions */}
-      <Card className="bg-pgr-surface border border-stone-200">
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardHeader>
           <CardTitle className="text-base font-semibold text-pgr-text flex items-center gap-2">
             <Shield className="h-4 w-4" /> Backup e Restauração
@@ -5473,8 +5773,68 @@ function SistemaView({ stats }: { stats: DashboardStats | null }) {
         </DialogContent>
       </Dialog>
 
+      {/* Audit Log */}
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100 flex items-center gap-2">
+            <FileText className="h-4 w-4" /> Registo de Auditoria
+          </CardTitle>
+          <CardDescription>Historial de todas as ações realizadas no sistema</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {auditLoading ? (
+            <div className="space-y-2">
+              {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          ) : auditLogs.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Nenhum registo de auditoria.</p>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {auditLogs.map((log) => (
+                <div key={log.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-stone-50 dark:bg-gray-800 border border-stone-200 dark:border-gray-700 text-sm">
+                  <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
+                    log.action === 'criacao' ? 'bg-green-500' :
+                    log.action === 'remocao' ? 'bg-red-500' :
+                    log.action === 'atualizacao' ? 'bg-amber-500' :
+                    'bg-gray-400'
+                  }`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-pgr-text dark:text-gray-100 capitalize">{log.action.replace('_', ' ')}</span>
+                      {log.fieldChanged && <span className="text-xs bg-stone-200 dark:bg-gray-700 text-stone-600 dark:text-gray-300 px-1.5 py-0.5 rounded">{log.fieldChanged}</span>}
+                      {log.arguidoId && <span className="text-xs text-muted-foreground">ID: {log.arguidoId}</span>}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      <span className="font-medium">{log.username}</span> · {formatDate(log.createdAt)}
+                    </div>
+                    {log.oldValue && log.newValue && (
+                      <div className="text-xs mt-1 flex gap-2 flex-wrap">
+                        <span className="text-red-500 line-through">{log.oldValue}</span>
+                        <span className="text-muted-foreground">→</span>
+                        <span className="text-green-600">{log.newValue}</span>
+                      </div>
+                    )}
+                    {log.newValue && !log.oldValue && (
+                      <div className="text-xs mt-1 text-green-600">{log.newValue}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Audit pagination */}
+          {auditTotal > 10 && (
+            <div className="flex items-center justify-center gap-2 mt-3 pt-3 border-t border-stone-200 dark:border-gray-700">
+              <Button variant="outline" size="sm" disabled={auditPage <= 1} onClick={() => loadAuditLogs(auditPage - 1)}>Anterior</Button>
+              <span className="text-xs text-muted-foreground">Pág. {auditPage} de {Math.ceil(auditTotal / 10)}</span>
+              <Button variant="outline" size="sm" disabled={auditPage >= Math.ceil(auditTotal / 10)} onClick={() => loadAuditLogs(auditPage + 1)}>Próxima</Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Email Notifications Section */}
-      <Card className="bg-pgr-surface border border-stone-200">
+      <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
         <CardHeader>
           <CardTitle className="text-base font-semibold text-pgr-text flex items-center gap-2">
             <Bell className="h-4 w-4" /> Notificações por Email

@@ -1,10 +1,10 @@
 // ============================================================
-// PGR Angola - Service Worker
-// Handles push notifications, background sync, and caching
+// PGR Angola - Service Worker v5
+// Handles push notifications, background sync, and offline caching
 // SECURITY: Main page (/) is NEVER cached — always fetched from network
 // ============================================================
 
-var CACHE_NAME = 'pgr-angola-v4';
+var CACHE_NAME = 'pgr-angola-v5';
 var STATIC_ASSETS = [
   '/manifest.json',
   '/icons/icon-192x192.png',
@@ -12,6 +12,14 @@ var STATIC_ASSETS = [
   '/icons/maskable-icon-192x192.png',
   '/icons/maskable-icon-512x512.png',
   '/icons/apple-touch-icon.png',
+  '/icons/favicon-32x32.png',
+  '/insignia-pgr.png',
+];
+
+// API responses to cache for offline access (stale-while-revalidate)
+var CACHEABLE_API_PATTERNS = [
+  '/api/stats',
+  '/api/arguidos/search-public',
 ];
 
 // ============================================================
@@ -20,7 +28,6 @@ var STATIC_ASSETS = [
 self.addEventListener('install', function(event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
-      // Do NOT cache '/' — login page must always be fresh
       return cache.addAll(STATIC_ASSETS).catch(function() {
         console.log('[SW] Static cache partially failed, continuing...');
       });
@@ -49,16 +56,47 @@ self.addEventListener('fetch', function(event) {
   var request = event.request;
   var url = new URL(request.url);
 
-  // Skip API calls and Supabase
-  if (url.pathname.indexOf('/api/') === 0 || url.hostname.indexOf('supabase') !== -1) {
-    return;
-  }
-
   // Skip non-GET
   if (request.method !== 'GET') return;
 
-  // Main page + page routes: ALWAYS network-first, no cache fallback
-  // This ensures the login page is always fresh (security requirement)
+  // Skip Supabase and external domains
+  if (url.hostname.indexOf('supabase') !== -1 || url.origin !== self.location.origin) return;
+
+  // API routes: network-first with cache fallback for cacheable endpoints
+  if (url.pathname.indexOf('/api/') === 0) {
+    var isCacheableApi = CACHEABLE_API_PATTERNS.some(function(pattern) {
+      return url.pathname.indexOf(pattern) === 0;
+    });
+
+    if (isCacheableApi) {
+      event.respondWith(
+        fetch(request)
+          .then(function(response) {
+            if (response.ok) {
+              var clone = response.clone();
+              caches.open(CACHE_NAME).then(function(cache) {
+                cache.put(request, clone);
+              });
+            }
+            return response;
+          })
+          .catch(function() {
+            return caches.match(request).then(function(cached) {
+              return cached || new Response(JSON.stringify({ error: 'Sem ligação', offline: true }), {
+                status: 503,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            });
+          })
+      );
+      return;
+    }
+
+    // Non-cacheable API: network only
+    return;
+  }
+
+  // Main page: ALWAYS network-first, no cache fallback (security)
   if (url.pathname === '/' || url.pathname.indexOf('/_next/data') === 0) {
     event.respondWith(
       fetch(request)
@@ -66,13 +104,32 @@ self.addEventListener('fetch', function(event) {
           return response;
         })
         .catch(function() {
-          // If offline, try cache but warn
           return caches.match(request).then(function(cached) {
             if (cached) return cached;
-            if (request.mode === 'navigate') return caches.match('/');
+            if (request.mode === 'navigate') return caches.match('/offline.html');
             return new Response('Sem ligação à internet', { status: 503, statusText: 'Service Unavailable' });
           });
         })
+    );
+    return;
+  }
+
+  // JS/CSS bundles: stale-while-revalidate (fast load, update in background)
+  if (url.pathname.indexOf('/_next/static') === 0) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(function(cache) {
+        return cache.match(request).then(function(cached) {
+          var fetchPromise = fetch(request).then(function(response) {
+            if (response.ok) {
+              cache.put(request, response.clone());
+            }
+            return response;
+          }).catch(function() {
+            return cached;
+          });
+          return cached || fetchPromise;
+        });
+      })
     );
     return;
   }
@@ -120,10 +177,8 @@ self.addEventListener('push', function(event) {
     }
   }
 
-  // Determine if this is a categorized summary notification
   var isSummary = !!(data.summary && data.summary.total > 0);
 
-  // Build notification options
   var options = {
     icon: data.icon,
     badge: data.badge,
@@ -140,13 +195,8 @@ self.addEventListener('push', function(event) {
   };
 
   if (isSummary) {
-    // SUMMARY NOTIFICATION FORMAT — clean with line breaks
     var s = data.summary;
-
-    // Title always: PGR ANGOLA
     options.title = '⚖️ PGR ANGOLA';
-
-    // Build body with clean line breaks (supported by Windows Action Center & Android)
     var bodyParts = [];
     if (s.expirados > 0) bodyParts.push('⛔  ' + s.expirados + ' Prazo(s) Expirado(s)');
     if (s.criticos > 0) bodyParts.push('🚨  ' + s.criticos + ' Caso(s) Crítico(s)');
@@ -154,19 +204,14 @@ self.addEventListener('push', function(event) {
     if (s.normal > 0) bodyParts.push('✅  ' + s.normal + ' Caso(s) Normal');
     bodyParts.push('📊  Total: ' + s.total + ' caso(s)');
     options.body = bodyParts.join('\n');
-
-    // Rich actions for summary notifications
     options.actions = [
       { action: 'view', title: '🔎 Ver Alertas' },
       { action: 'dashboard', title: '📊 Dashboard' },
     ];
-
-    // Higher urgency vibration for critical
     if (s.expirados > 0 || s.criticos > 0) {
       options.vibrate = [300, 100, 300, 100, 300, 200, 300];
     }
   } else {
-    // STANDARD NOTIFICATION FORMAT (simple title + body)
     options.title = data.title;
     options.body = data.body || data.bodyCompact;
     options.actions = [
@@ -181,24 +226,21 @@ self.addEventListener('push', function(event) {
 });
 
 // ============================================================
-// NOTIFICATION CLICK — Handle user actions
+// NOTIFICATION CLICK
 // ============================================================
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
-
   var action = event.action;
   var notifData = event.notification.data || {};
   var targetUrl = notifData.url || '/?view=alertas';
   var summary = notifData.summary;
 
-  // Handle specific actions
   if (action === 'dismiss') return;
   if (action === 'dashboard') targetUrl = '/';
   if (action === 'view' && summary) targetUrl = '/?view=alertas';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clients) {
-      // Focus existing window
       for (var i = 0; i < clients.length; i++) {
         var client = clients[i];
         if (client.url.indexOf(self.location.origin) !== -1 && 'focus' in client) {
@@ -206,18 +248,12 @@ self.addEventListener('notificationclick', function(event) {
           return client.focus();
         }
       }
-      // Open new window
       return self.clients.openWindow(targetUrl);
     })
   );
 });
 
-// ============================================================
-// NOTIFICATION CLOSE
-// ============================================================
-self.addEventListener('notificationclose', function() {
-  // Track dismissed if needed
-});
+self.addEventListener('notificationclose', function() {});
 
 // ============================================================
 // BACKGROUND SYNC

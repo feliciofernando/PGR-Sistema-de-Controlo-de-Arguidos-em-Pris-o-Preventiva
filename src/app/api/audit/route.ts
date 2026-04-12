@@ -6,8 +6,10 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const arguidoId = searchParams.get('arguido_id');
+    const username = searchParams.get('username');
+    const action = searchParams.get('action');
     const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '50');
+    const pageSize = parseInt(searchParams.get('pageSize') || '25');
 
     let query = supabase
       .from('audit_logs')
@@ -16,6 +18,12 @@ export async function GET(request: NextRequest) {
 
     if (arguidoId) {
       query = query.eq('arguido_id', parseInt(arguidoId));
+    }
+    if (username) {
+      query = query.eq('username', username);
+    }
+    if (action) {
+      query = query.eq('action', action);
     }
 
     const from = (page - 1) * pageSize;
@@ -44,16 +52,19 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/audit - Create new audit log entry
+// POST /api/audit - Create new audit log entry (for general system events)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    // Try to get username from auth header
+    const username = request.headers.get('x-user-username') || body.username || 'sistema';
+
     const record = {
-      arguido_id: body.arguidoId,
+      arguido_id: body.arguidoId || null,
       user_id: body.userId || null,
-      username: body.username || 'sistema',
-      action: body.action,           // criacao, atualizacao, remocao, status_change
+      username,
+      action: body.action,
       field_changed: body.fieldChanged || null,
       old_value: body.oldValue || null,
       new_value: body.newValue || null,
