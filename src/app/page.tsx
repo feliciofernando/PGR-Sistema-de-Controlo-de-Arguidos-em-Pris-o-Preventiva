@@ -3389,135 +3389,88 @@ function DashboardView({ stats, loading, onNavigate, onViewDetail, authUser }: {
         </CardContent>
       </Card>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-stone-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-pgr-text-muted dark:text-gray-400 font-medium">Total Arguidos</p>
-                <p className="text-2xl font-bold text-pgr-text dark:text-gray-100">{stats.totalArguidos}</p>
-              </div>
-              <div className="w-10 h-10 bg-pgr-surface rounded-lg flex items-center justify-center">
-                <Users className="h-5 w-5 text-pgr-text-muted" />
-              </div>
-            </div>
+      {/* KPI Cards - Compactos */}
+      <div className="grid grid-cols-4 md:grid-cols-4 gap-2">
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
+          <CardContent className="p-2 text-center">
+            <p className="text-xl font-bold text-pgr-text dark:text-gray-100">{stats.totalArguidos}</p>
+            <p className="text-xs text-pgr-text-muted">Total</p>
           </CardContent>
         </Card>
-
-        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-green-500">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-pgr-text-muted dark:text-gray-400 font-medium">Ativos</p>
-                <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.ativos}</p>
-              </div>
-              <div className="w-10 h-10 bg-green-500/10 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400" />
-              </div>
-            </div>
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 border-l-2 border-l-green-500">
+          <CardContent className="p-2 text-center">
+            <p className="text-xl font-bold text-green-600 dark:text-green-400">{stats.ativos}</p>
+            <p className="text-xs text-pgr-text-muted">Ativos</p>
           </CardContent>
         </Card>
-
-        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-red-500">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-pgr-text-muted dark:text-gray-400 font-medium">Vencidos</p>
-                <p className="text-2xl font-bold text-red-500 dark:text-red-400">{stats.vencidos}</p>
-              </div>
-              <div className="w-10 h-10 bg-red-500/10 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
-                <AlertCircle className="h-5 w-5 text-red-500 dark:text-red-400" />
-              </div>
-            </div>
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 border-l-2 border-l-red-500">
+          <CardContent className="p-2 text-center">
+            <p className="text-xl font-bold text-red-500 dark:text-red-400">{stats.vencidos}</p>
+            <p className="text-xs text-pgr-text-muted">Vencidos</p>
           </CardContent>
         </Card>
-
-        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 pgr-card-hover border-l-4 border-l-amber-500">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-pgr-text-muted dark:text-gray-400 font-medium">Alertas</p>
-                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stats.alertasPendentes}</p>
-              </div>
-              <div className="w-10 h-10 bg-amber-50 dark:bg-amber-900/30 rounded-lg flex items-center justify-center">
-                <Bell className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-            </div>
+        <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800 border-l-2 border-l-amber-500">
+          <CardContent className="p-2 text-center">
+            <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{stats.alertasPendentes}</p>
+            <p className="text-xs text-pgr-text-muted">Alertas</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Conformidade + Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Conformidade + Charts Row - Compactos */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Taxa de Conformidade</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center">
-              <div className="text-4xl font-bold mb-2" style={{ color: conformidade >= 80 ? "#28A745" : conformidade >= 50 ? "#FFC107" : "#DC3545" }}>
-                {conformidade}%
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-pgr-text-muted mb-1">Conformidade</p>
+                <p className="text-2xl font-bold" style={{ color: conformidade >= 80 ? "#28A745" : conformidade >= 50 ? "#FFC107" : "#DC3545" }}>{conformidade}%</p>
               </div>
-              <Progress value={conformidade} className="h-2 mb-2" />
-              <p className="text-sm text-pgr-text-muted">Dos prazos dentro do limite</p>
+              <Progress value={conformidade} className="w-16 h-2" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Distribuição por Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={160}>
+          <CardContent className="p-2">
+            <p className="text-xs text-pgr-text-muted mb-1">Status</p>
+            <ResponsiveContainer width="100%" height={100}>
               <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={35} outerRadius={60} paddingAngle={5} dataKey="value">
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={25} outerRadius={40} paddingAngle={2} dataKey="value">
                   {pieData.map((_, idx) => (
                     <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <RechartsTooltip />
-                <Legend iconSize={12} wrapperStyle={{ fontSize: 13, color: '#aaa' }} />
+                <Legend iconSize={8} wrapperStyle={{ fontSize: 10, color: '#aaa' }} />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
         <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-pgr-text dark:text-gray-100">Casos por Crime</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={160}>
+          <CardContent className="p-2">
+            <p className="text-xs text-pgr-text-muted mb-1">Por Crime</p>
+            <ResponsiveContainer width="100%" height={100}>
               <BarChart data={crimeData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis type="number" tick={{ fontSize: 12, fill: '#aaa' }} />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 12, fill: '#aaa' }} width={90} />
-                <RechartsTooltip formatter={(v: number, _: string, p: { payload: { fullName: string } }) => [v, p.payload.fullName]} />
-                <Bar dataKey="total" fill="#374151" radius={[0, 4, 4, 0]} />
+                <XAxis type="number" tick={{ fontSize: 9, fill: '#aaa' }} />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 9, fill: '#aaa' }} width={70} />
+                <Bar dataKey="total" fill="#374151" radius={[0, 2, 2, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
-      {/* Monthly Trend */}
+      {/* Monthly Trend - Compacto */}
       {monthlyData.length > 0 && (
         <Card className="bg-pgr-surface dark:bg-gray-900 border border-stone-200 dark:border-gray-800">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2 text-pgr-text dark:text-gray-100">
-              <TrendingUp className="h-4 w-4" /> Evolução Mensal de Casos
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
+          <CardContent className="p-3">
+            <p className="text-xs text-pgr-text-muted mb-2 flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Evolução Mensal</p>
+            <ResponsiveContainer width="100%" height={120}>
               <LineChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#aaa' }} />
-                <YAxis tick={{ fontSize: 12, fill: '#aaa' }} />
-                <RechartsTooltip />
-                <Line type="monotone" dataKey="casos" stroke="#374151" strokeWidth={2} dot={{ fill: "#374151" }} />
+                <XAxis dataKey="month" tick={{ fontSize: 9, fill: '#aaa' }} />
+                <YAxis tick={{ fontSize: 9, fill: '#aaa' }} />
+                <Line type="monotone" dataKey="casos" stroke="#374151" strokeWidth={2} dot={{ fill: "#374151", r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
